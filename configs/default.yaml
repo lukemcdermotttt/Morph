@@ -1,0 +1,58 @@
+# config.yaml
+
+# Model Configuration
+model:
+  name: 'mnist_mlp'       # Model architecture (e.g., resnet50, vgg16, custom_model)
+
+# Training Configuration
+training:
+  num_epochs: 50        # Number of epochs
+  batch_size: 128        # Batch size
+  #learning_rate: 0.001  # Initial learning rate
+
+  # Optimizer (you can choose 'adam', 'sgd', etc.)
+  optimizer:
+    options: ["Adam", "RMSprop", "SGD"]
+    #weight_decay: 1e-5  # L2 regularization
+
+# Use subsetting to speed up HPO evaluations, faster but adds noise to optimization processes
+subsets:
+  use_subsets: True 
+  train: 30
+  test: 10
+
+hpo:
+  n_trials: 10 
+  timeout: 600
+
+  # Learning rate scheduler
+  #scheduler:
+  #  type: 'stepLR'      # Options might include: 'stepLR', 'plateau', etc.
+  #  step_size: 10       # Used for 'stepLR'
+  #  gamma: 0.1          # Decay factor for 'stepLR'
+
+# Data Configuration
+#data:
+#  root_dir: '/path/to/dataset'   # Root directory for the dataset
+#  train_dir: 'train'             # Sub-directory for training data
+#  val_dir: 'val'                 # Sub-directory for validation data
+#  transforms:                    # List of transformations to apply
+#    - resize: [224, 224]         # Resize images to the given size
+#    - normalize: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]  # Mean and std normalization for 3 channels
+
+# Evaluation Configuration
+#evaluation:
+#  metric: 'accuracy'    # Metric for evaluation (e.g., 'accuracy', 'loss')
+
+# Logging Configuration
+#logging:
+#  save_dir: './checkpoints'  # Directory to save model checkpoints
+#  log_interval: 10           # Log after this many batches
+
+# Device Configuration
+  # Select from ['mps', 'cuda', 'cpu'], for device id 'cuda:0'
+  # GPU device ID (e.g., 'cuda:0') if multiple GPUs are available
+device: 'mps'
+
+       
+
