@@ -105,7 +105,7 @@ def objective(trial):
     # Setup the data loaders
     # train_loader, valid_loader = setup_data_loaders(batch_size)
 
-    train_loader, valid_loader = setup_data_loaders(batch_size_temp)
+    train_loader, valid_loader = setup_data_loaders(batch_size_temp, IMG_SIZE, aug=aug, num_workers=4, pin_memory=False, prefetch_factor=2)
 
     criterion = torch.nn.MSELoss()
 
