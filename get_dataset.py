@@ -13,3 +13,4 @@ def extract_tar_gz(tar_gz_path, target_directory):
     print(f"Files extracted to {target_directory}")
 
 
+extract_tar_gz(tar_gz_path, target_directory)
