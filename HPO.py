@@ -9,11 +9,13 @@ import torch.nn as nn
 import os
 from datetime import datetime
 
-
 from BragnnDataset import setup_data_loaders
 from model import BraggNN_D
+import torch.nn.utils.prune as prune
 
-def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, trial, num_epochs, save=True, patience=10):
+def train_model(model, optimizer, scheduler, train_loader, valid_loader, device, trial, num_epochs, save=True, patience=10):
+    criterion = torch.nn.MSELoss()
+
     curr_patience = patience
     previous_epoch_loss = float('inf')
     progress_bar = tqdm(range(num_epochs), disable=True)
@@ -55,22 +57,13 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
         if save and validation_loss < previous_epoch_loss:
             curr_patience=patience
             best_model = model.state_dict()
-
         else:
             curr_patience -= 1
-            if curr_patience <= 0:
-                date_str = datetime.now().strftime("%Y%m%d")
-                model_filename = f'trial{trial.number}Epoch{epoch}_{date_str}.pth'
-                model_path = os.path.join('./saved_models', model_filename)
-                os.makedirs(os.path.dirname(model_path), exist_ok=True)
-                torch.save(best_model, model_path)
-                break
+            if curr_patience <= 0: break
         progress_bar.set_postfix(prev_loss=f'{previous_epoch_loss:.4e}')
         previous_epoch_loss = validation_loss
-    
     progress_bar.close()
     return previous_epoch_loss
-
 
 
 def create_scheduler(optimizer, trial):
@@ -89,44 +82,75 @@ def create_scheduler(optimizer, trial):
     return scheduler
 
 
-def objective(trial):
+
+#Run vanilla HPO to find relatively good search space
+def vanilla_objective(trial):
+    #Sample Hyperparameters
     lr = trial.suggest_float('lr', 1e-5, 5e-3, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-9, 1e-3, log=True)
-    # batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256, 512])
+    momentum = trial.suggest_float('momentum', 0.0, 1.0)
 
     # Initialize the model
+    FC_LAYER_SIZES = (64, 32, 16, 8)  # example sizes of the fully connected layers
     model = BraggNN_D(imgsz=IMG_SIZE, fcsz=FC_LAYER_SIZES).to(device)
-
-
-    #Don't need to change optimizers
-    optimizer_name = trial.suggest_categorical('optimizer', ['Adam', 'RMSprop', 'SGD'])
-    if optimizer_name == 'SGD':
-        momentum = trial.suggest_float('momentum', 0.0, 1.0)
-        optimizer = getattr(torch.optim, optimizer_name)(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    else:
-        optimizer = getattr(torch.optim, optimizer_name)(model.parameters(), lr=lr, weight_decay=weight_decay)
-
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     scheduler = create_scheduler(optimizer, trial)
 
-    # Setup the data loaders
-    # train_loader, valid_loader = setup_data_loaders(batch_size)
-
-    train_loader, valid_loader = setup_data_loaders(batch_size_temp, IMG_SIZE, aug=aug, num_workers=4, pin_memory=False, prefetch_factor=2)
-
-    criterion = torch.nn.MSELoss()
-
-
-    validation_loss = train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, trial, num_epochs)
+    validation_loss = train_model(model, optimizer, scheduler, train_loader, val_loader, device, trial, num_epochs)
 
     return validation_loss
+
+#Helper function for pruning
+def get_parameters_to_prune(model, bias = False):
+    parameters_to_prune = []
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+            parameters_to_prune.append((module, 'weight'))
+            if bias and module.bias != None:
+                parameters_to_prune.append((module, 'bias'))
+        
+    return tuple(parameters_to_prune)
+
+#Search for best model with QAT and Pruning, multi-objective search
+#IN PROGRESS, NOT TESTED
+def compression_objective(trial):
+    #Sample Hyperparameters
+    lr = trial.suggest_float('lr', 1e-5, 5e-3, log=True)
+    weight_decay = trial.suggest_float('weight_decay', 1e-9, 1e-3, log=True)
+    momentum = trial.suggest_float('momentum', 0.0, 1.0)
+    amount = trial.suggest_float('momentum', 0.1, .25) #amount to prune each iteration
+    prune_iters = 15 #this can be fixed, we dont need HPO on this parameter
+
+    # Initialize the model
+    FC_LAYER_SIZES = (64, 32, 16, 8)  # example sizes of the fully connected layers
+    model = BraggNN_D(imgsz=IMG_SIZE, fcsz=FC_LAYER_SIZES).to(device)
+
+    #Pretrain model
+    validation_loss = train_model(model, optimizer, scheduler, train_loader, val_loader, device, trial, num_epochs)
+    bops = None #TODO: Estimate BOPS / FLOPS, make sure to remove pruning parameterization before calculating
+    trial.report([validation_loss, bops], 0)
+    #Run IMP w/ Finetuning (Learning-Rate-Rewinding Pruning)
+    for i in range(1, prune_iters):
+        prune.global_unstructured(get_parameters_to_prune(model),pruning_method=prune.L1Unstructured,amount=amount)
+    
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+        scheduler = create_scheduler(optimizer, trial)
+
+        validation_loss = train_model(model, optimizer, scheduler, train_loader, val_loader, device, trial, num_epochs)
+        bops = None #TODO: Estimate BOPS / FLOPS, make sure to remove pruning parameterization before calculating
+        trial.report([validation_loss, bops], i) #report the metrics for this specific pruning iteration
+
+    return validation_loss, bops
     
 
 if __name__ == '__main__':
+    #Load Dataset
     batch_size_temp=256
     IMG_SIZE = 11
-    FC_LAYER_SIZES = (64, 32, 16, 8)  # example sizes of the fully connected layers
     aug=1
     num_epochs=150
+    train_loader, val_loader = setup_data_loaders(batch_size_temp, IMG_SIZE, aug=aug, num_workers=4, pin_memory=False, prefetch_factor=2)
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
 

@@ -31,8 +31,6 @@ class NLB(torch.nn.Module):
         _out_tmp = torch.add(_out_tmp, x)
    
         return _out_tmp
-    
-
 
 class BraggNN_D(nn.Module):
     def __init__(self, imgsz, cnn_channels=(64, 32, 8), fcsz=(64, 32, 16, 8)):
