@@ -6,11 +6,14 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import _LRScheduler
 from functools import partial
 import torch.nn as nn
+import os
+from datetime import datetime
+
 
 from BragnnDataset import setup_data_loaders
 from model import BraggNN_D
 
-def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, trial, num_epochs):
+def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, trial, num_epochs, save=True):
     previous_epoch_loss = float('inf')
     progress_bar = tqdm(range(num_epochs), disable=True)
     
@@ -47,6 +50,14 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
         
         if scheduler:
             scheduler.step()
+
+        if save and validation_loss < previous_epoch_loss:
+            date_str = datetime.now().strftime("%Y%m%d")
+            # Create a model filename with the trial number, epoch, and current date
+            model_filename = f'trial{trial.number}Epoch{epoch}_{date_str}.pth'
+            model_path = os.path.join('./saved_models', model_filename)
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            torch.save(model.state_dict(), model_path)
 
         progress_bar.set_postfix(prev_loss=f'{previous_epoch_loss:.4e}')
         previous_epoch_loss = validation_loss
@@ -98,6 +109,7 @@ def objective(trial):
 
     criterion = torch.nn.MSELoss()
 
+
     validation_loss = train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, trial, num_epochs)
 
     return validation_loss
@@ -108,7 +120,7 @@ if __name__ == '__main__':
     IMG_SIZE = 11
     FC_LAYER_SIZES = (64, 32, 16, 8)  # example sizes of the fully connected layers
     aug=1
-    num_epochs=30
+    num_epochs=100
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
 

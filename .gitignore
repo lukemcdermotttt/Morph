@@ -3,3 +3,5 @@
 
 # But keep the dataset.tar.gz file
 !/dataset/dataset.tar.gz
+
+/saved_models/*
