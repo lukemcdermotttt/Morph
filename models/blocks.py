@@ -28,11 +28,11 @@ def sample_ConvAttn(trial, prefix):
     return out_channels
 
 #prefix of the name you suggest variables for, a prefix needs to be mapped to a unique block location.
-def sample_ConvBlock(trial, in_channels, prefix, num_layers = 2):
+def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
     #Search space to sample from
     channel_space = []
     kernel_space = [1,3,5]
-    act_space = [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
+    act_space = [nn.ReLU(), nn.LeakyReLU(), nn.GELU(), lambda x: x]
     norm_space = [None, 'layer', 'batch']
 
     channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
@@ -63,20 +63,32 @@ class ConvBlock(torch.nn.Module):
             x = l(x)
         return x
 
-#This function is ready to go
+def sample_MLP(trial, in_dim, prefix = 'MLP', num_layers = 4):
+    width_space = [8,16,32,64,256,512]
+    act_space = [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
+    norm_space = [None, 'layer', 'batch']
+
+    widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i+1), 0, len(width_space) - 1)] for i in range(num_layers)] + [2]
+    acts = [trial.suggest_categorical(prefix + '_acts_' + str(i), act_space) for i in range(num_layers)]
+    norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
+
+    return widths, acts, norms
+
+
+#TODO: Add variable length with pass through layers ie lambda x: x
 class MLP(torch.nn.Module):
     def __init__(self):
-        super().__init__(width, act, norm)
+        super().__init__(widths, acts, norms)
 
         self.layers = []
-        for i in range(len(act)):
-            self.layers.append( nn.Linear(width[i], width[i+1]) )
-            if norm[i] == 'batch':
-                self.layers.append( nn.BatchNorm1d(width[i+1]) )
-            elif norm[i] == 'layer':
-                self.layers.append( nn.LayerNorm(width[i+1]) )
+        for i in range(len(acts)):
+            self.layers.append( nn.Linear(widths[i], widths[i+1]) )
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm1d(widths[i+1]) )
+            elif norms[i] == 'layer':
+                self.layers.append( nn.LayerNorm(widths[i+1]) )
             #elif None, skip
-            self.layers.append( self.act[i] )
+            self.layers.append( self.acts[i] )
 
     def forward(self, x):
         for l in self.layers:
@@ -103,31 +115,33 @@ class CandidateArchitecture(torch.nn.Module):
 
 #Psuedo-code for hierarchical sampling in optuna
 def objective(trial):
+    num_blocks = 3
+    input_size = (11,11)
+    block_channels = [trial.suggest()] #the channel dimensions before/after each block
 
-    b1_in_channels = trial.suggest()
-    b1 = trial.suggest_categorical('b1', ['Conv', 'ConvAttn', 'None'])
-    b2 = trial.suggest_categorical('b2', ['Conv', 'ConvAttn', 'None'])
-    b3 = trial.suggest_categorical('b3', ['Conv', 'ConvAttn', 'None'])
+    #Sample Block Types
+    b = [trial.suggest_categorical('b' + str(i), ['Conv', 'ConvAttn', 'None']) for i in range(num_blocks)]
+    Blocks = [] #Store the nn.module blocks
 
-    if b1 == 'Conv':
-        channels, kernels, acts, norms = sample_ConvBlock(trial, b1_in_channels, 'b1_Conv')
-        b1_out_channels = channels[-1] #save the final out dimension so b2 knows what to expect
-        Block1 = Conv(channels, kernels, acts, norms)
-    elif b1 == 'ConvAttn':
-        b1_out_channels = trial.suggest()
-        Block1 = ConvAttn(b1_in_channels, b1_out_channels)
-    else:
-        Block1 = lambda x: x
-    #repeat for b2,b3
+    for i, block_type in enumerate(b):
+        if block_type == 'Conv':
+            channels, kernels, acts, norms = sample_ConvBlock(trial, 'b' + str(i) + '_Conv', block_channels[-1])
+            Blocks.append(Conv(channels, kernels, acts, norms))
+            block_channels.append(channels[-1]) #save the final out dimension so b2 knows what to expect
+        elif block_type == 'ConvAttn':
+            out_channels = sample_ConvAttn(trial, 'b' + str(i) + '_ConvAttn')
+            Blocks.append(ConvAttn(block_channels[-1], out_channels))
+            block_channels.append(out_channels)
+        else:
+            Blocks.append(lambda x: x) #Place holder to ensure len(Blocks) == num_blocks, not sure if we need this in future.
 
-    #Pick MLP parameters for 4 linear layers
-    widths = [162, 64, 32, 16, 2] #the final dim 2 is fixed, the initial dim is dependent on block2, pick the 3 intermediate widths
-    act = [nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.ReLU()] #pick from [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
-    norm = [None, None, None, None] #pick from [None, 'layer', 'batch'], identity means do nothing or we can make this None
-    MLP = MLP(param1, param2, ...)
+    #Build MLP
+    in_dim = block_channels[-1] * input_size[0] * input_size[1] #this assumes spatial dim stays same with padding trick
+    widths, acts, norms = sample_MLP(trial)
+    MLP = MLP(widths, acts, norms)
 
-    #build model
-    model = CandidateArchitecture(Block1, Block2, Block3, MLP, b1_in_channels)
+    #Build Model
+    model = CandidateArchitecture(Blocks, MLP, block_channels[0])
 
     return evaluate(model)
 
