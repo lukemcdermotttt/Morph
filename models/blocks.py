@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 
 
-class TransformerBlock(torch.nn.Module):
-    def __init__(self, input_size = (4, 16, 9, 9)):
+class TransformerBlock(nn.Module):
+    def __init__(self, trial, input_size = (4, 16, 9, 9)):
         super().__init__()
         embed_dim = input_size[-2] * input_size[-1]
                
@@ -30,8 +30,8 @@ class TransformerBlock(torch.nn.Module):
 
 #Convolution Attention, [No MLP/FeedForward after], no need for sampling other than in/out channels
 #TODO: Should we add projection layer? should this be sampled from optuna?
-class ConvAttention(torch.nn.Module):
-    def __init__(self):
+class ConvAttention(nn.Module):
+    def __init__(self, trial):
         super().__init__(in_channels = 16, out_channels = 8)
         #Attention Block
         self.Wq = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
@@ -47,8 +47,8 @@ class ConvAttention(torch.nn.Module):
         return x
 
 
-class SkipBlock(torch.nn.Module):
-    def __init__(self):
+class SkipBlock(nn.Module):
+    def __init__(self, trial):
         super().__init__()
         #Sample hyperparameters
         self.input_size = (4,16,11,11)
@@ -78,8 +78,8 @@ class SkipBlock(torch.nn.Module):
         x = self.act[-1](x) #Activation after skip
         return x
 
-class ConvBlock(torch.nn.Module):
-    def __init__(self):
+class ConvBlock(nn.Module):
+    def __init__(self, trial):
         super().__init__()
         #Sample hyperparameters
         self.input_size = (4,16,11,11)
@@ -107,7 +107,7 @@ class ConvBlock(torch.nn.Module):
         return x
 
 class MLP(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, trial):
         super().__init__()
         #Sample hyperparameters
         self.widths = [162, 64, 32, 16, 2]
@@ -132,7 +132,7 @@ class MLP(torch.nn.Module):
         return x
 
 class CandidateArchitecture(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, trial):
         super().__init__()
         channels = 16
         self.conv = nn.Conv2d(1, channels, kernel_size=(3, 3), stride=(1, 1))
