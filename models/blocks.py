@@ -3,6 +3,7 @@ import torch.nn as nn
 
 INPUT_SIZE = (4,1,11,11)
 
+#Pretty much ready to go
 #Convolution Attention, [No MLP/FeedForward after], no need for sampling other than in/out channels
 #TODO: Eventually we add projection layer? or give it the option to use one.
 #TODO: BraggNN does not divide by d. Should we? lets give it the option
@@ -21,35 +22,46 @@ class ConvAttn(torch.nn.Module):
         z = self.softmax(query * key) * value 
         return x
 
+def sample_ConvAttn(trial, prefix):
+    channel_space = []
+    out_channels = channel_space[trial.suggest_int(prefix + '_outchannel', 0, len(channel_space) - 1)]
+    return out_channels
 
-#This needs a ton of work.
+#prefix of the name you suggest variables for, a prefix needs to be mapped to a unique block location.
+def sample_ConvBlock(trial, in_channels, prefix, num_layers = 2):
+    #Search space to sample from
+    channel_space = []
+    kernel_space = [1,3,5]
+    act_space = [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
+    norm_space = [None, 'layer', 'batch']
+
+    channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
+                                    for i in range(num_layers)] #Picks an integer an index of channel_space for easier sampling
+    kernels = [trial.suggest_categorical(prefix + '_kernels_' + str(i), kernel_space) for i in range(num_layers)]
+    norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
+    acts = [trial.suggest_categorical(prefix + '_acts_' + str(i), act_space) for i in range(num_layers)]
+
+    return channels, kernels, acts, norms 
+
 class ConvBlock(torch.nn.Module):
     def __init__(self):
-        super().__init__(input_channels = 16)
-        #Sample hyperparameters
-        self.input_size = (4,16,11,11)
-        self.channels = [16,8,2]
-        self.kernels = [3,3] #[1,3,5]
-        self.act = [nn.ReLU(), nn.ReLU()] #pick from [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
-        self.norm = ['identity', 'identity'] #pick from ['identity', 'layer', 'batch']
+        super().__init__(channels, kernels, acts, norms, input_size = [4,16,11,11])
         self.layers = []
+        for i in range(len(kernels)):
+            self.layers.append( nn.Conv2d(channels[i], channels[i+1], 
+                                          kernel_size=kernels[i], stride=1, 
+                                          padding = (kernels[i] - 1) // 2) )
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm2d(channels[i+1]) )
+            elif norms[i] == 'layer':
+                self.layers.append( nn.LayerNorm([channels[i+1]]+input_size[2:]) )
 
-        for i in range(len(self.kernels)):
-            self.layers.append( nn.Conv2d(self.channels[i], self.channels[i+1], 
-                                          kernel_size=self.kernels[i], stride=1, 
-                                          padding = (self.kernels[i] - 1) // 2) )
-            if self.norm[i] == 'batch':
-                self.layers.append( nn.BatchNorm2d(self.channels[i+1]) )
-            elif self.norm[i] == 'layer':
-                self.layers.append( nn.LayerNorm(self.input_size) )
-
-            self.layers.append( self.act[i] )
+            self.layers.append(acts[i])
       
     def forward(self, x):
         for l in self.layers:
             x = l(x)
         return x
-
 
 #This function is ready to go
 class MLP(torch.nn.Module):
@@ -89,31 +101,24 @@ class CandidateArchitecture(torch.nn.Module):
         x = self.MLP(x)
         return x
 
-"""
 #Psuedo-code for hierarchical sampling in optuna
 def objective(trial):
 
-    hidden_channels = trial.suggest() #this is for the very first conv projection layer found in CandidateArchitecture
+    b1_in_channels = trial.suggest()
     b1 = trial.suggest_categorical('b1', ['Conv', 'ConvAttn', 'None'])
     b2 = trial.suggest_categorical('b2', ['Conv', 'ConvAttn', 'None'])
     b3 = trial.suggest_categorical('b3', ['Conv', 'ConvAttn', 'None'])
 
     if b1 == 'Conv':
-        channels = trial.suggest('b1_Conv_channels', ) #-> since first block, the input_channels to Conv here is decided before so this is fixed. Sample the other 2 channel params tho
-        kernel_size = trial.suggest('b1_Conv_kernelsize', )
+        channels, kernels, acts, norms = sample_ConvBlock(trial, b1_in_channels, 'b1_Conv')
         b1_out_channels = channels[-1] #save the final out dimension so b2 knows what to expect
-        ...
-        Block1 = Conv(channels, kernel_size) #Create block here, then pass it to CandidateArchitecture Later
+        Block1 = Conv(channels, kernels, acts, norms)
     elif b1 == 'ConvAttn':
-        b1_in_channels = hidden_channels #out dimension of conv projection
         b1_out_channels = trial.suggest()
-        Block1 = ConvAttn(hidden_channels, b1_out_channels)
-    ...
-    if b2 == 'Conv':
-        channels = trial.suggest('b2_Conv_channels', )
-        ...
-        Block2 = Conv(..)
-    ...
+        Block1 = ConvAttn(b1_in_channels, b1_out_channels)
+    else:
+        Block1 = lambda x: x
+    #repeat for b2,b3
 
     #Pick MLP parameters for 4 linear layers
     widths = [162, 64, 32, 16, 2] #the final dim 2 is fixed, the initial dim is dependent on block2, pick the 3 intermediate widths
@@ -122,10 +127,10 @@ def objective(trial):
     MLP = MLP(param1, param2, ...)
 
     #build model
-    model = CandidateArchitecture(Block1, Block2, Block3, MLP, hidden_channels)
+    model = CandidateArchitecture(Block1, Block2, Block3, MLP, b1_in_channels)
 
     return evaluate(model)
-"""
+
 
 
 #Leaving this in for later, currently not used/working.
