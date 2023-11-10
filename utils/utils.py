@@ -15,7 +15,6 @@ def identify_device():
     return torch.device(device)
 
 
-
 def parse_configuration(verbose: bool = False) -> dict:
 
     parser = argparse.ArgumentParser(description="PyTorch Training with YAML Configs and Args")
