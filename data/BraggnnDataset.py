@@ -29,7 +29,7 @@ class BraggNNDataset(Dataset):
         self.psz = psz 
         self.rnd_shift = rnd_shift
 
-        with h5py.File('./dataset/peaks-exp4train-psz%d.hdf5' % psz, "r") as h5fd: 
+        with h5py.File('./data/peaks-exp4train-psz%d.hdf5' % psz, "r") as h5fd: 
             if use == 'train':
                 sti, edi = 0, int(train_frac * h5fd['peak_fidx'].shape[0])
             elif use == 'validation':
@@ -46,7 +46,7 @@ class BraggNNDataset(Dataset):
 
         self.fidx_base = self.peak_fidx.min()
         # only loaded frames that will be used
-        with h5py.File('./dataset/frames-exp4train.hdf5', 'r') as h5fd: 
+        with h5py.File('./data/frames-exp4train.hdf5', 'r') as h5fd: 
             self.frames = h5fd['frames'][self.peak_fidx.min():self.peak_fidx.max()+1]
 
         self.len = self.peak_fidx.shape[0]

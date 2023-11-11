@@ -9,19 +9,20 @@ INPUT_SIZE = (4,1,11,11)
 #TODO: Eventually we add projection layer? or give it the option to use one.
 #TODO: BraggNN does not divide by d. Should we? lets give it the option
 class ConvAttn(torch.nn.Module):
-    def __init__(self, in_channels = 16, out_channels = 8):
+    def __init__(self, in_channels = 16, hidden_channels = 8):
         super().__init__()
-        self.Wq = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-        self.Wk = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-        self.Wv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
+        self.Wq = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
+        self.Wk = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
+        self.Wv = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
         self.softmax = nn.Softmax(dim=1)
+        self.proj = nn.Conv2d(hidden_channels, in_channels, kernel_size=1, stride=1)
 
     def forward(self, x):
         query = self.Wq(x)
         key = self.Wk(x)
         value = self.Wv(x)
-        x = self.softmax(query * key) * value 
-        return x
+        z = self.softmax(query * key) * value 
+        return x + self.proj(z)
 
 class ConvBlock(torch.nn.Module):
     def __init__(self, channels, kernels, acts, norms, input_size = [4,16,9,9]):
@@ -41,7 +42,6 @@ class ConvBlock(torch.nn.Module):
       
     def forward(self, x):
         return self.layers(x)
-
 
 #TODO: Add variable length with pass through layers ie lambda x: x
 class MLP(torch.nn.Module):
@@ -65,15 +65,15 @@ class MLP(torch.nn.Module):
 
 def sample_ConvAttn(trial, prefix):
     channel_space = (1,2,4,8,12,16)
-    out_channels = channel_space[trial.suggest_int(prefix + '_outchannel', 0, len(channel_space) - 1)]
-    return out_channels
+    hidden_channels = channel_space[trial.suggest_int(prefix + '_hiddenchannel', 0, len(channel_space) - 1)]
+    return hidden_channels
 
 #prefix of the name you suggest variables for, a prefix needs to be mapped to a unique block location.
 def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
     #Search space to sample from
-    channel_space = (1,2,4,8,12,16)
-    kernel_space = (1,3,5)
-    act_space = (nn.ReLU(), nn.LeakyReLU(), nn.GELU(), lambda x: x)
+    channel_space = (2,4,8,16)
+    kernel_space = (1,3)
+    act_space = (nn.ReLU(), nn.GELU(), lambda x: x)
     norm_space = (None, 'layer', 'batch')
 
     channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
@@ -106,72 +106,10 @@ class CandidateArchitecture(torch.nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
-        for b in self.Blocks:
-            x = b(x)
+        x = self.Blocks(x)
         x = torch.flatten(x, 1)
         x = self.MLP(x)
         return x
-
-
-def objective(trial):
-    num_blocks = 3
-    
-    channel_space = [1,2,4,8,12,16]
-    block_channels = [ channel_space[trial.suggest_int('Proj_outchannel', 0, len(channel_space) - 1) ] ] #the channel dimensions before/after each block
-
-    #Sample Block Types
-    b = [trial.suggest_categorical('b' + str(i), ['Conv', 'ConvAttn', 'None']) for i in range(num_blocks)]
-    Blocks = [] #Store the nn.module blocks
-
-    #Build Blocks
-    for i, block_type in enumerate(b):
-        if block_type == 'Conv':
-            channels, kernels, acts, norms = sample_ConvBlock(trial, 'b' + str(i) + '_Conv', block_channels[-1])
-            Blocks.append(ConvBlock(channels, kernels, acts, norms))
-            block_channels.append(channels[-1]) #save the final out dimension so b2 knows what to expect
-        elif block_type == 'ConvAttn':
-            out_channels = sample_ConvAttn(trial, 'b' + str(i) + '_ConvAttn')
-            Blocks.append(ConvAttn(block_channels[-1], out_channels))
-            block_channels.append(out_channels)
-        else:
-            Blocks.append(lambda x: x) #Place holder to ensure len(Blocks) == num_blocks, not sure if we need this in future.
-
-    #Build MLP
-    spatial_dims = (9,9) #spatial dims after blocks, this is not (11,11) due to the 3x3 kernel size from first projection conv
-    in_dim = block_channels[-1] * spatial_dims[0] * spatial_dims[1] #this assumes spatial dim stays same with padding trick
-    widths, acts, norms = sample_MLP(trial, in_dim)
-    mlp = MLP(widths, acts, norms)
-
-    #Build Model
-    model = CandidateArchitecture(Blocks, mlp, block_channels[0])
-
-    return evaluate(model)
-
-def evaluate(model):
-    x = torch.randn((4,1,11,11))
-    y = model(x) #check forward pass works.
-
-    #Count Params
-    count = 0
-    for b in model.Blocks:
-        if isinstance(b, ConvBlock) or isinstance(b, ConvAttn): #dont count lambda x: x
-            count += sum(p.numel() for p in b.parameters())
-    mlp_params = sum(p.numel() for p in model.MLP.parameters())
-    count += sum(p.numel() for p in model.conv.parameters())
-    return count
-
-
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=100)
-
-# Print the best trial
-print('Best trial:')
-trial = study.best_trial
-print(f'Value: {trial.value}')
-print(f'Params: ')
-for key, value in trial.params.items():
-    print(f'    {key}: {value}')
-
 
 
 
