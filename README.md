@@ -5,10 +5,15 @@ See our slides for a brief background and outline for this toolkit: https://docs
 
 
 # Directions
-Load the virtual environemt: ``source .env/bin/activate``
+### Set up Environment
+Create a virtual environment: `` python3 -m venv .env ``
+Load the virtual environment: ``source .env/bin/activate``
+Install dependencies: ``pip install -r requirements.txt``
 
-run ``python get_dataset.py`` to generate the dataset
 
-run ``python testrun.py`` to use optuna to minimize mean_distance, this also reports inference times (x50) and val loss
+### Set up dataset
+Generate the dataset by running ``python get_dataset.py``
 
-TODO: Add requirements
+
+### Search
+Run ``python testrun.py`` to use optuna to minimize mean_distance, this also reports inference times (x50) and val loss
