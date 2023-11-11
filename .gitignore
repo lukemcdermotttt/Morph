@@ -1,5 +1,6 @@
 # Ignore everything in the dataset directory
 /data/frames-exp4train.hdf5
 /data/peaks-exp4train-psz11.hdf5
-
+env/
+.env/
 /saved_models/*
