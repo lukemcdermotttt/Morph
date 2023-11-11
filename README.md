@@ -10,3 +10,5 @@ Load the virtual environemt: ``source .env/bin/activate``
 run ``python get_dataset.py`` to generate the dataset
 
 run ``python testrun.py`` to use optuna to minimize mean_distance, this also reports inference times (x50) and val loss
+
+TODO: Add requirements
