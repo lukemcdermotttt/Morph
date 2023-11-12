@@ -9,7 +9,7 @@ import torch.nn as nn
 import os
 from datetime import datetime
 
-def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, num_epochs, save=True, patience=10):
+def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device,trial, num_epochs, save=True, patience=10, ):
     curr_patience = patience
     previous_epoch_loss = float('inf')
     progress_bar = tqdm(range(num_epochs), disable=True)

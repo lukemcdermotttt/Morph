@@ -9,12 +9,30 @@ import torch.nn as nn
 import os
 from datetime import datetime
 
+import sys
+sys.path.append('./data/')
+from BraggnnDataset import setup_data_loaders, BraggNNDataset
 
 
 
 
 
 
+
+def create_scheduler(optimizer, trial):
+    scheduler_name = trial.suggest_categorical('scheduler', ['StepLR', 'CosineAnnealingLR', 'ExponentialLR'])
+    if scheduler_name == 'StepLR':
+        step_size = trial.suggest_int('step_size', 1, 100)
+        gamma = trial.suggest_float('gamma', 0.1, 1.0)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    elif scheduler_name == 'CosineAnnealingLR':
+        T_max = trial.suggest_int('T_max', 1, 100)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max)
+    elif scheduler_name == 'ExponentialLR':
+        gamma = trial.suggest_float('gamma', 0.1, 1.0)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
+
+    return scheduler
 
 
 
