@@ -7,21 +7,23 @@ from models.blocks import *
 from models.train_utils import *
 import time
 
+#Optuna Hyperparameters to recreate the OpenHLS BraggNN model
 OpenHLS_params = {
     'b0': 'ConvAttn',
     'b1': 'Conv',
     'b2': 'None',
     'Proj_outchannel': 1,
     'b0_ConvAttn_hiddenchannel' : 3,
+    'b0_ConvAttn_act' : 0,
     'b1_Conv_channels_0' : 2,
     'b1_Conv_channels_1' : 0,
-    'b1_Conv_kernels_0' : 1,
-    'b1_Conv_kernels_1' : 1,
+    'b1_Conv_kernels_0' : 3,
+    'b1_Conv_kernels_1' : 3,
     'b1_Conv_acts_0' : 0,
     'b1_Conv_acts_1' : 0,
     'b1_Conv_norms_0' : None,
     'b1_Conv_norms_1' : None,
-    'MLP_width_0' : 3,
+    'MLP_width_0' : 2,
     'MLP_width_1' : 1,
     'MLP_width_2' : 0,
     'MLP_acts_0' : 0,
@@ -34,11 +36,39 @@ OpenHLS_params = {
     'MLP_norms_3' : None,
     }
 
+#Optuna Hyperparameters for original BraggNN model
+BraggNN_params = {
+    'b0': 'ConvAttn',
+    'b1': 'Conv',
+    'b2': 'None',
+    'Proj_outchannel': 3,
+    'b0_ConvAttn_hiddenchannel' : 5,
+    'b0_ConvAttn_act' : 2,
+    'b1_Conv_channels_0' : 4,
+    'b1_Conv_channels_1' : 2,
+    'b1_Conv_kernels_0' : 3,
+    'b1_Conv_kernels_1' : 3,
+    'b1_Conv_acts_0' : 2,
+    'b1_Conv_acts_1' : 2,
+    'b1_Conv_norms_0' : None,
+    'b1_Conv_norms_1' : None,
+    'MLP_width_0' : 4,
+    'MLP_width_1' : 3,
+    'MLP_width_2' : 2,
+    'MLP_acts_0' : 2,
+    'MLP_acts_1' : 2,
+    'MLP_acts_2' : 2,
+    'MLP_acts_3' : 3,
+    'MLP_norms_0' : None,
+    'MLP_norms_1' : None,
+    'MLP_norms_2' : None,
+    'MLP_norms_3' : None,
+    }
 
 def objective(trial):
     #Build Model
     num_blocks = 3
-    channel_space = (8,16,24)
+    channel_space = (8,16,32,64)
     block_channels = [ channel_space[trial.suggest_int('Proj_outchannel', 0, len(channel_space) - 1) ] ] #the channel dimensions before/after each block
 
     #Sample Block Types
@@ -112,14 +142,14 @@ def get_inference_time(model,device):
     return end-start
 
 def evaluate(model):
-    num_epochs = 10
+    num_epochs = 100
     device = torch.device('cuda:0')
     model = model.to(device)
 
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=.0015, weight_decay=2.2e-9)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
-    validation_loss = train_model(model, optimizer, scheduler, criterion, train_loader, val_loader, device, num_epochs)
+    validation_loss = train_model(model, optimizer, scheduler, criterion, train_loader, val_loader, device, 32)
     
     #Evaluate Performance
     mean_distance = get_performance(model, val_loader, device)
@@ -132,7 +162,8 @@ def evaluate(model):
 
 def main():
     study = optuna.create_study(directions=['minimize', 'minimize']) #min mean_distance and inference time
-    #study.enqueue_trial(test_params) #Run BraggNN first
+    study.enqueue_trial(OpenHLS_params)
+    study.enqueue_trial(BraggNN_params)
     study.optimize(objective, n_trials=100)
 
     # Print the best trial

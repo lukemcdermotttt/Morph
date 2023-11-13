@@ -10,7 +10,6 @@ import time
 
 x = torch.randn((256,1,11,11))
 
-
 #High performing model found by search
 Blocks = nn.Sequential(
     ConvBlock([24,16,16], [3,1], [nn.GELU(), nn.ReLU()], [None, 'batch'],img_size=9),
@@ -18,7 +17,7 @@ Blocks = nn.Sequential(
     ConvBlock([16,4,16], [3,3], [nn.GELU(), nn.GELU()], [None, 'batch'],img_size=7)
 )
 mlp = MLP(widths=[144, 64, 16, 4, 2], acts=[nn.GELU(), None, None, None], norms=['layer', 'layer','layer',None])
-model = CandidateArchitecture(Blocks, mlp,24)
+model = CandidateArchitecture(Blocks,mlp,24)
 y = model(x)
 
 #OpenHLS Model
@@ -27,7 +26,7 @@ Blocks = nn.Sequential(
     ConvBlock([16,8,2], [3,3], [nn.ReLU(), nn.ReLU()], [None, None],img_size=9)
 )
 mlp = MLP(widths=[50, 16, 8, 4, 2], acts=[nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.ReLU()], norms=[None, None, None, None])
-model = CandidateArchitecture(Blocks, mlp,16)
+model = CandidateArchitecture(Blocks,mlp,16)
 y = model(x)
 print('OpenHLS Model:')
 print(model)
@@ -38,7 +37,7 @@ Blocks = nn.Sequential(
     ConvBlock([64,32,8], [3,3], [nn.LeakyReLU(negative_slope=0.01), nn.LeakyReLU(negative_slope=0.01)], [None, None],img_size=9)
 )
 mlp = MLP(widths=[200,64,32,16,8,2], acts=[nn.LeakyReLU(negative_slope=0.01), nn.LeakyReLU(negative_slope=0.01), nn.LeakyReLU(negative_slope=0.01), nn.LeakyReLU(negative_slope=0.01), None], norms=[None, None, None, None, None])
-model = CandidateArchitecture(Blocks, mlp,64)
+model = CandidateArchitecture(Blocks,mlp,64)
 y = model(x)
 print('Original BraggNN Model:')
 print(model)
