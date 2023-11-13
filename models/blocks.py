@@ -2,42 +2,49 @@ import torch
 import torch.nn as nn
 import optuna
 
-INPUT_SIZE = (4,1,11,11)
 
-#Pretty much ready to go
-#Convolution Attention, [No MLP/FeedForward after], no need for sampling other than in/out channels
-#TODO: Eventually we add projection layer? or give it the option to use one.
+#Convolution Attention as done in BraggNN, [No MLP/FeedForward after]
 #TODO: BraggNN does not divide by d. Should we? lets give it the option
 class ConvAttn(torch.nn.Module):
-    def __init__(self, in_channels = 16, hidden_channels = 8):
+    def __init__(self, in_channels = 16, hidden_channels = 8, norm = None, act = None):
         super().__init__()
+        self.hidden_channels = hidden_channels
         self.Wq = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
         self.Wk = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
         self.Wv = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
-        self.softmax = nn.Softmax(dim=1)
+        self.softmax = nn.Softmax(dim=-1)
         self.proj = nn.Conv2d(hidden_channels, in_channels, kernel_size=1, stride=1)
+        self.act = act
 
     def forward(self, x):
-        query = self.Wq(x)
-        key = self.Wk(x)
-        value = self.Wv(x)
-        z = self.softmax(query * key) * value 
-        return x + self.proj(z)
+        b, c, h, w = x.size()
+        query = self.Wq(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
+        key = self.Wk(x).view(b, self.hidden_channels, -1)
+        value = self.Wv(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
+
+        z = self.softmax(torch.matmul(query,key))
+        z = torch.matmul(z, value).permute(0, 2, 1).view(b, self.hidden_channels, h, w)
+        
+        x = x + self.proj(z)
+        if self.act is not None:
+            x = self.act(x)
+        return x
 
 class ConvBlock(torch.nn.Module):
-    def __init__(self, channels, kernels, acts, norms, input_size = [4,16,9,9]):
+    def __init__(self, channels, kernels, acts, norms, img_size):
         super().__init__()
         self.layers = []
         for i in range(len(kernels)):
             self.layers.append( nn.Conv2d(channels[i], channels[i+1], 
                                           kernel_size=kernels[i], stride=1, 
-                                          padding = (kernels[i] - 1) // 2) )
+                                          padding = 0 )) #padding = (kernels[i] - 1) // 2)
+            if kernels[i] == 3: img_size -= 2
             if norms[i] == 'batch':
                 self.layers.append( nn.BatchNorm2d(channels[i+1]) )
             elif norms[i] == 'layer':
-                self.layers.append( nn.LayerNorm([channels[i+1]]+input_size[2:]) )
-
-            self.layers.append(acts[i])
+                self.layers.append( nn.LayerNorm([channels[i+1], img_size, img_size]) )
+            if acts[i] != None:
+                self.layers.append(acts[i])
         self.layers = nn.Sequential(*self.layers)
       
     def forward(self, x):
@@ -56,7 +63,8 @@ class MLP(torch.nn.Module):
             elif norms[i] == 'layer':
                 self.layers.append( nn.LayerNorm(widths[i+1]) )
             #elif None, skip
-            self.layers.append( acts[i] )
+            if acts[i] != None:
+                self.layers.append( acts[i] )
         self.layers = nn.Sequential(*self.layers)
         
 
@@ -64,39 +72,40 @@ class MLP(torch.nn.Module):
         return self.layers(x)
 
 def sample_ConvAttn(trial, prefix):
-    channel_space = (1,2,4,8,12,16)
+    channel_space = (1,2,4,8,16,32)
+    act_space = (nn.ReLU(), nn.GELU(), None)
+    norm_space = (None, 'layer', 'batch')
     hidden_channels = channel_space[trial.suggest_int(prefix + '_hiddenchannel', 0, len(channel_space) - 1)]
-    return hidden_channels
+    act = act_space[trial.suggest_categorical(prefix + '_act', [0,1,2])]
+    return hidden_channels, act
 
 #prefix of the name you suggest variables for, a prefix needs to be mapped to a unique block location.
 def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
     #Search space to sample from
-    channel_space = (2,4,8,16)
+    channel_space = (2,4,8,16,32,64)
     kernel_space = (1,3)
-    act_space = (nn.ReLU(), nn.GELU(), lambda x: x)
+    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
     norm_space = (None, 'layer', 'batch')
 
     channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
                                     for i in range(num_layers)] #Picks an integer an index of channel_space for easier sampling
     kernels = [trial.suggest_categorical(prefix + '_kernels_' + str(i), kernel_space) for i in range(num_layers)]
     norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
-    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), torch.arange(0, len(act_space) - 1))] for i in range(num_layers)]
+    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [0,1,2])] for i in range(num_layers)]
 
     return channels, kernels, acts, norms 
 
 def sample_MLP(trial, in_dim, prefix = 'MLP', num_layers = 4):
     width_space = (4,8,12,16,24,32,64)
-    act_space = (nn.ReLU(), nn.LeakyReLU(), nn.GELU(), lambda x: x)
+    act_space = (nn.ReLU(), nn.GELU(), None)
     norm_space = (None, 'layer', 'batch')
 
-    widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i+1), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [2]
-    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), torch.arange(0, len(act_space) - 1))] for i in range(num_layers)]
+    widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [2]
+    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [0,1,2])] for i in range(num_layers)]
     norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
 
     return widths, acts, norms
 
-#This function is pretty much done.
-#Requires all blocks/mlp to be created to limit hyperparams
 class CandidateArchitecture(torch.nn.Module):
     def __init__(self, Blocks, MLP, hidden_channels, input_channels = 1):
         super().__init__()
@@ -110,6 +119,16 @@ class CandidateArchitecture(torch.nn.Module):
         x = torch.flatten(x, 1)
         x = self.MLP(x)
         return x
+
+class Identity(torch.nn.Module):
+    def __init__(self):
+        super(self).__init__()
+    
+    def forward(self, x):
+        return x
+
+
+
 
 
 
