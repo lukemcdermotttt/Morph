@@ -51,7 +51,7 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
         if validation_loss < previous_epoch_loss:
             curr_patience= patience
             if save:
-                modelpath= f"./models/{datetime.now().strftime('%Y-%m-%d_%H:%M:%S')}.pth"
+                modelpath= f"./saved_models/{datetime.now().strftime('%Y-%m-%d_%H:%M:%S')}.pth"
                 model.save(modelpath)
                 trial.set_user_attr("model_path", modelpath)
         else:
