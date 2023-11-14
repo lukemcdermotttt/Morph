@@ -9,7 +9,7 @@ import torch.nn as nn
 import os
 from datetime import datetime
 
-def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, num_epochs,trial=None save=True, patience=10):
+def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, num_epochs, patience=10, trial=None, save=True):
     curr_patience = patience
     previous_epoch_loss = float('inf')
     
@@ -43,8 +43,17 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
         if scheduler:
             scheduler.step()
 
+        if trial is not None:
+            trial.report(validation_loss, epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
+            
         if validation_loss < previous_epoch_loss:
-            curr_patience=patience
+            curr_patience= patience
+            if save:
+                modelpath= f"./models/{datetime.now().strftime('%Y-%m-%d_%H:%M:%S')}.pth"
+                model.save(modelpath)
+                trial.set_user_attr("model_path", modelpath)
         else:
             curr_patience -= 1
             if curr_patience <= 0: break
