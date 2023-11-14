@@ -147,7 +147,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
 
-    n_trials=100
+    n_trials=200
     study = optuna.create_study(direction='minimize', pruner=optuna.pruners.MedianPruner(n_warmup_steps=10))
     study.optimize(objective, n_trials=n_trials)
 
