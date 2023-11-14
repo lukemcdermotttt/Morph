@@ -52,7 +52,8 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
             curr_patience= patience
             if save:
                 modelpath= f"./saved_models/{datetime.now().strftime('%Y-%m-%d_%H:%M:%S')}.pth"
-                model.save(modelpath)
+                torch.save(model.state_dict(), modelpath)
+                # model.save(modelpath)
                 trial.set_user_attr("model_path", modelpath)
         else:
             curr_patience -= 1
