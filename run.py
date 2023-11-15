@@ -142,8 +142,8 @@ def get_inference_time(model,device):
     return end-start
 
 def evaluate(model):
-    num_epochs = 100
-    device = torch.device('cuda:0')
+    num_epochs = 150
+    device = torch.device('cuda:1')
     model = model.to(device)
 
     criterion = torch.nn.MSELoss()
@@ -164,7 +164,7 @@ def main():
     study = optuna.create_study(directions=['minimize', 'minimize']) #min mean_distance and inference time
     study.enqueue_trial(OpenHLS_params)
     study.enqueue_trial(BraggNN_params)
-    study.optimize(objective, n_trials=100)
+    study.optimize(objective, n_trials=1000)
 
     # Print the best trial
     print('Best trial:')
