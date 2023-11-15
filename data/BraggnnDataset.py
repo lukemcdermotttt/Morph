@@ -29,13 +29,19 @@ class BraggNNDataset(Dataset):
         self.psz = psz 
         self.rnd_shift = rnd_shift
 
-        with h5py.File('./data/peaks-exp4train-psz%d.hdf5' % psz, "r") as h5fd: 
+        with h5py.File('./dataset/peaks-exp4train-psz%d.hdf5' % psz, "r") as h5fd:
+            total_samples = h5fd['peak_fidx'].shape[0]
+            train_end = int(train_frac * total_samples)
+            test_start = int((1 - test_frac) * total_samples)
+
             if use == 'train':
-                sti, edi = 0, int(train_frac * h5fd['peak_fidx'].shape[0])
+                sti, edi = 0, train_end
             elif use == 'validation':
-                sti, edi = int(train_frac * h5fd['peak_fidx'].shape[0]), None
+                sti, edi = train_end, test_start
+            elif use == 'test':
+                sti, edi = test_start, None
             else:
-                logging.error(f"unsupported use: {use}. This class is written for building either training or validation set")
+                logging.error(f"Unsupported use: {use}. This class should be used for building training, validation, or test set")
 
             mask = h5fd['npeaks'][sti:edi] == 1 # use only single-peak patches
             mask = mask & ((h5fd['deviations'][sti:edi] >= 0) & (h5fd['deviations'][sti:edi] < 1))
@@ -105,4 +111,7 @@ def setup_data_loaders(batch_size, IMG_SIZE, aug=0, num_workers=4, pin_memory=Fa
     ds_valid = BraggNNDataset(psz=IMG_SIZE, rnd_shift=0, use='validation')
     dl_valid = DataLoader(ds_valid, batch_size=batch_size, shuffle=False, num_workers=num_workers, prefetch_factor=prefetch_factor, drop_last=False, pin_memory=pin_memory)
 
-    return dl_train, dl_valid
+    ds_test = BraggNNDataset(psz=IMG_SIZE, rnd_shift=0, use='test')
+    dl_test = DataLoader(ds_test, batch_size=batch_size, shuffle=False, num_workers=num_workers, prefetch_factor=prefetch_factor, drop_last=False, pin_memory=pin_memory)
+
+    return dl_train, dl_valid, dl_test
