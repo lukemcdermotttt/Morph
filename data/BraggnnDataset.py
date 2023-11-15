@@ -111,4 +111,7 @@ def setup_data_loaders(batch_size, IMG_SIZE, aug=0, num_workers=4, pin_memory=Fa
     ds_valid = BraggNNDataset(psz=IMG_SIZE, rnd_shift=0, use='validation')
     dl_valid = DataLoader(ds_valid, batch_size=batch_size, shuffle=False, num_workers=num_workers, prefetch_factor=prefetch_factor, drop_last=False, pin_memory=pin_memory)
 
-    return dl_train, dl_valid
+    ds_test = BraggNNDataset(psz=IMG_SIZE, rnd_shift=0, use='test')
+    dl_test = DataLoader(ds_test, batch_size=batch_size, shuffle=False, num_workers=num_workers, prefetch_factor=prefetch_factor, drop_last=False, pin_memory=pin_memory)
+
+    return dl_train, dl_valid, dl_test
