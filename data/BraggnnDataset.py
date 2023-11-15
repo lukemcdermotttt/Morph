@@ -25,7 +25,7 @@ def clean_patch(p, center):
     return p * (cc == cc_lmin)
 
 class BraggNNDataset(Dataset):
-    def __init__(self, psz=11, rnd_shift=0, use='train', train_frac=0.8):
+    def __init__(self, psz=11, rnd_shift=0, use='train', train_frac=0.8, test_frac=0.1):
         self.psz = psz 
         self.rnd_shift = rnd_shift
 
