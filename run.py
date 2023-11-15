@@ -176,6 +176,6 @@ def main():
 
 if __name__ == "__main__":
     batch_size=256
-    train_loader, val_loader = setup_data_loaders(batch_size, IMG_SIZE = 11, aug=1, num_workers=4, pin_memory=False, prefetch_factor=2)
+    train_loader, val_loader, test_loader = setup_data_loaders(batch_size, IMG_SIZE = 11, aug=1, num_workers=4, pin_memory=False, prefetch_factor=2)
     print('Loaded Dataset...')
     main()
