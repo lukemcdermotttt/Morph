@@ -108,7 +108,7 @@ def objective(trial):
         file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
     return mean_distance, param_count
 
-def get_performance(model, dataloader, device):
+def get_performance(model, dataloader, psz=11, device):
     distances = []
     with torch.no_grad():
         for features, true_locs in dataloader:
@@ -117,7 +117,7 @@ def get_performance(model, dataloader, device):
             preds = preds.cpu().numpy()
 
             # Calculate Euclidean distance
-            distance = np.sqrt(np.sum((preds - true_locs.numpy()) ** 2, axis=1))
+            distance = np.sqrt(np.sum((preds - true_locs.numpy()) ** 2, axis=1)) * psz
             distances.extend(distance)  # Changed from append to extend
 
     mean_distance = np.mean(distances)
@@ -176,6 +176,6 @@ def main():
 
 if __name__ == "__main__":
     batch_size=256
-    train_loader, val_loader = setup_data_loaders(batch_size, IMG_SIZE = 11, aug=1, num_workers=4, pin_memory=False, prefetch_factor=2)
+    train_loader, val_loader, test_loader = setup_data_loaders(batch_size, IMG_SIZE = 11, aug=1, num_workers=4, pin_memory=False, prefetch_factor=2)
     print('Loaded Dataset...')
     main()
