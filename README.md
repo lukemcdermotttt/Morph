@@ -8,9 +8,11 @@ Create a virtual environment: `` python3 -m venv .env ``
 Load the virtual environment: ``source .env/bin/activate``
 Install dependencies: ``pip install -r requirements.txt``
 
-
 ### Set up dataset
-Generate the dataset by running ``python get_dataset.py``
+Generate the dataset by running ``python data/get_dataset.py``
 
 ### Search
 Run ``python run.py`` to use optuna to minimize mean_distance & inference time, the reports will be at optuna_trials.txt
+
+### Examples of using blocks.py
+Check out ``model_examples.py`` to see how we can create architectures from these blocks.
