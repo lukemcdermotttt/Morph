@@ -7,7 +7,6 @@ from models.blocks import *
 from models.train_utils import *
 import time
 
-
 x = torch.randn((256,1,11,11))
 
 #High performing model found by search
@@ -19,6 +18,34 @@ Blocks = nn.Sequential(
 mlp = MLP(widths=[144, 64, 16, 4, 2], acts=[nn.GELU(), None, None, None], norms=['layer', 'layer','layer',None])
 model = CandidateArchitecture(Blocks,mlp,24)
 y = model(x)
+print('Our Model:')
+print(model)
+device = torch.device("cuda:1")
+model.to(device)
+dummy_input = torch.randn((256,1,11,11), dtype=torch.float).to(device)
+
+# INIT LOGGERS
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+repetitions = 100000
+warmup_repetitions = 5000
+timings=np.zeros((repetitions,1))
+#GPU-WARM-UP
+for _ in range(warmup_repetitions):
+    _ = model(dummy_input)
+# MEASURE PERFORMANCE
+with torch.no_grad():
+    for rep in range(repetitions):
+        starter.record()
+        _ = model(dummy_input)
+        ender.record()
+        # WAIT FOR GPU SYNC
+        torch.cuda.synchronize()
+        curr_time = starter.elapsed_time(ender)
+        timings[rep] = curr_time
+
+mean_syn = np.sum(timings) / repetitions
+std_syn = np.std(timings)
+print(mean_syn, std_syn)
 
 #OpenHLS Model
 Blocks = nn.Sequential(
@@ -30,6 +57,29 @@ model = CandidateArchitecture(Blocks,mlp,16)
 y = model(x)
 print('OpenHLS Model:')
 print(model)
+model.to(device)
+dummy_input = torch.randn((256,1,11,11), dtype=torch.float).to(device)
+
+# INIT LOGGERS
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+timings=np.zeros((repetitions,1))
+#GPU-WARM-UP
+for _ in range(warmup_repetitions):
+    _ = model(dummy_input)
+# MEASURE PERFORMANCE
+with torch.no_grad():
+    for rep in range(repetitions):
+        starter.record()
+        _ = model(dummy_input)
+        ender.record()
+        # WAIT FOR GPU SYNC
+        torch.cuda.synchronize()
+        curr_time = starter.elapsed_time(ender)
+        timings[rep] = curr_time
+
+mean_syn = np.sum(timings) / repetitions
+std_syn = np.std(timings)
+print(mean_syn, std_syn)
 
 #BraggNN model
 Blocks = nn.Sequential(
@@ -41,8 +91,29 @@ model = CandidateArchitecture(Blocks,mlp,64)
 y = model(x)
 print('Original BraggNN Model:')
 print(model)
+model.to(device)
+dummy_input = torch.randn((256,1,11,11), dtype=torch.float).to(device)
 
+# INIT LOGGERS
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+timings=np.zeros((repetitions,1))
+#GPU-WARM-UP
+for _ in range(warmup_repetitions):
+    _ = model(dummy_input)
+# MEASURE PERFORMANCE
+with torch.no_grad():
+    for rep in range(repetitions):
+        starter.record()
+        _ = model(dummy_input)
+        ender.record()
+        # WAIT FOR GPU SYNC
+        torch.cuda.synchronize()
+        curr_time = starter.elapsed_time(ender)
+        timings[rep] = curr_time
 
+mean_syn = np.sum(timings) / repetitions
+std_syn = np.std(timings)
+print(mean_syn, std_syn)
 
 
 

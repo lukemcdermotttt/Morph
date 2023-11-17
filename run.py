@@ -6,6 +6,7 @@ import optuna
 from models.blocks import *
 from models.train_utils import *
 import time
+from utils.bops import *
 
 #Optuna Hyperparameters to recreate the OpenHLS BraggNN model
 OpenHLS_params = {
@@ -21,7 +22,7 @@ OpenHLS_params = {
     'b1_Conv_kernels_1' : 3,
     'b1_Conv_acts_0' : 0,
     'b1_Conv_acts_1' : 0,
-    'b1_Conv_norms_0' : None,
+    'b1_Conv_norms_0' : None, 
     'b1_Conv_norms_1' : None,
     'MLP_width_0' : 2,
     'MLP_width_1' : 1,
@@ -76,6 +77,7 @@ def objective(trial):
     Blocks = [] #Store the nn.module blocks
 
     img_size = 9 #size after First conv layer
+    bops = 0 #Record Estimated BOPs
     #Build Blocks
     for i, block_type in enumerate(b):
         if block_type == 'Conv':
@@ -85,11 +87,13 @@ def objective(trial):
                 kernels[kernels.index(3)] = 1
                 reduce_img_size = 2*sum([1 if k == 3 else 0 for k in kernels])
             Blocks.append(ConvBlock(channels, kernels, acts, norms, img_size))
+            bops += calculate_convblock_bops(Blocks[-1], sparsity_dict=None, weight_bit_width=32, activation_bit_width=32)
             img_size -= reduce_img_size
             block_channels.append(channels[-1]) #save the final out dimension so next block knows what to expect
         elif block_type == 'ConvAttn':
             hidden_channels, act = sample_ConvAttn(trial, 'b' + str(i) + '_ConvAttn')
             Blocks.append(ConvAttn(block_channels[-1], hidden_channels, act))
+            bops += calculate_convattn_bops(Blocks[-1], sparsity=[0]*4, input_shape = [batch_size, block_channels[-1], img_size, img_size], weight_bit_width=32, activation_bit_width=32)
             #ConvAttn doesnt change channels bc skip connect
 
     Blocks = nn.Sequential(*Blocks)
@@ -98,17 +102,19 @@ def objective(trial):
     in_dim = block_channels[-1] * img_size**2 #this assumes spatial dim stays same with padding trick
     widths, acts, norms = sample_MLP(trial, in_dim)
     mlp = MLP(widths, acts, norms)
+    bops +=  calculate_mlpblock_bops(mlp, sparsity_dict=None, weight_bit_width=32, activation_bit_width=32)
     
     #Initialize Model
     model = CandidateArchitecture(Blocks, mlp, block_channels[0])
     print(model)
+    print('BOPs:', bops)
     #Evaluate Model
     mean_distance, inference_time, validation_loss, param_count = evaluate(model)
     with open("./optuna_trials.txt", "a") as file:
-        file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
-    return mean_distance, param_count
+        file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, BOPs: {bops}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
+    return mean_distance, bops
 
-def get_performance(model, dataloader, psz=11, device):
+def get_performance(model, dataloader, device, psz=11):
     distances = []
     with torch.no_grad():
         for features, true_locs in dataloader:
@@ -142,7 +148,7 @@ def get_inference_time(model,device):
     return end-start
 
 def evaluate(model):
-    num_epochs = 150
+    num_epochs = 100
     device = torch.device('cuda:1')
     model = model.to(device)
 

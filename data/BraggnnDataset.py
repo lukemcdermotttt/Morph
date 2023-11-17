@@ -25,11 +25,11 @@ def clean_patch(p, center):
     return p * (cc == cc_lmin)
 
 class BraggNNDataset(Dataset):
-    def __init__(self, psz=11, rnd_shift=0, use='train', train_frac=0.8):
+    def __init__(self, psz=11, rnd_shift=0, use='train', train_frac=0.8, test_frac=.1):
         self.psz = psz 
         self.rnd_shift = rnd_shift
 
-        with h5py.File('./dataset/peaks-exp4train-psz%d.hdf5' % psz, "r") as h5fd:
+        with h5py.File('./data/peaks-exp4train-psz%d.hdf5' % psz, "r") as h5fd:
             total_samples = h5fd['peak_fidx'].shape[0]
             train_end = int(train_frac * total_samples)
             test_start = int((1 - test_frac) * total_samples)
