@@ -114,11 +114,7 @@ def objective(trial):
         file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, BOPs: {bops}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
     return mean_distance, bops
 
-<<<<<<< HEAD
 def get_performance(model, dataloader, device, psz=11):
-=======
-def get_performance(model, dataloader, device):
->>>>>>> 9d9bc6998240dda30745de358643d896c2278321
     distances = []
     with torch.no_grad():
         for features, true_locs in dataloader:
@@ -152,14 +148,14 @@ def get_inference_time(model,device):
     return end-start
 
 def evaluate(model):
-    num_epochs = 100
+    num_epochs = 150
     device = torch.device('cuda:1')
     model = model.to(device)
 
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.RMSprop(model.parameters(), lr=.0015, weight_decay=2.2e-9)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
-    validation_loss = train_model(model, optimizer, scheduler, criterion, train_loader, val_loader, device, 32)
+    validation_loss = train_model(model, optimizer, scheduler, criterion, train_loader, val_loader, device, num_epochs)
     
     #Evaluate Performance
     mean_distance = get_performance(model, val_loader, device)
