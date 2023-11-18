@@ -8,6 +8,7 @@ from models.train_utils import *
 import time
 from utils.bops import *
 
+
 #Optuna Hyperparameters to recreate the OpenHLS BraggNN model
 OpenHLS_params = {
     'b0': 'ConvAttn',
@@ -114,38 +115,7 @@ def objective(trial):
         file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, BOPs: {bops}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
     return mean_distance, bops
 
-def get_performance(model, dataloader, device, psz=11):
-    distances = []
-    with torch.no_grad():
-        for features, true_locs in dataloader:
-            features = features.to(device)
-            preds = model(features)  # assuming model outputs normalized [px, py]
-            preds = preds.cpu().numpy()
 
-            # Calculate Euclidean distance
-            distance = np.sqrt(np.sum((preds - true_locs.numpy()) ** 2, axis=1)) * 11 # psz=11
-            distances.extend(distance)  # Changed from append to extend
-
-    mean_distance = np.mean(distances)
-    return mean_distance
-
-def get_param_count(model):
-    count = 0
-    count += sum(p.numel() for p in model.Blocks.parameters())
-    count += sum(p.numel() for p in model.MLP.parameters())
-    count += sum(p.numel() for p in model.conv.parameters())
-
-    print('Architecture: ', model.conv,model.Blocks, model.MLP)
-    return count
-
-def get_inference_time(model,device):
-    #inference time
-    x = torch.randn((256,1,11,11)).to(device)
-    start = time.time()
-    for _ in range(100):
-        y = model(x)
-    end = time.time()
-    return end-start
 
 def evaluate(model):
     num_epochs = 150
