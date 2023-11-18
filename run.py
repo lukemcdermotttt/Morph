@@ -167,7 +167,7 @@ def evaluate(model):
     return mean_distance, inference_time, validation_loss, param_count
 
 def main():
-    study = optuna.create_study(directions=['minimize', 'minimize']) #min mean_distance and inference time
+    study = optuna.create_study(sampler=optuna.samplers.NSGAIISampler(), directions=['minimize', 'minimize']) #min mean_distance and inference time
     study.enqueue_trial(OpenHLS_params)
     study.enqueue_trial(BraggNN_params)
     study.optimize(objective, n_trials=1000)
