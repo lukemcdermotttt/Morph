@@ -1,7 +1,6 @@
 # Ignore everything in the dataset directory
-/dataset/*
-
-# But keep the dataset.tar.gz file
-!/dataset/dataset.tar.gz
-
+/data/frames-exp4train.hdf5
+/data/peaks-exp4train-psz11.hdf5
+env/
+.env/
 /saved_models/*

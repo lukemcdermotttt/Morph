@@ -1,9 +1,134 @@
 import torch
 import torch.nn as nn
+import optuna
 
 
-class TransformerBlock(nn.Module):
-    def __init__(self, trial, input_size = (4, 16, 9, 9)):
+#Convolution Attention as done in BraggNN, [No MLP/FeedForward after]
+#TODO: BraggNN does not divide by d. Should we? lets give it the option
+class ConvAttn(torch.nn.Module):
+    def __init__(self, in_channels = 16, hidden_channels = 8, norm = None, act = None):
+        super().__init__()
+        self.hidden_channels = hidden_channels
+        self.Wq = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
+        self.Wk = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
+        self.Wv = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1)
+        self.softmax = nn.Softmax(dim=-1)
+        self.proj = nn.Conv2d(hidden_channels, in_channels, kernel_size=1, stride=1)
+        self.act = act
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        query = self.Wq(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
+        key = self.Wk(x).view(b, self.hidden_channels, -1)
+        value = self.Wv(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
+
+        z = self.softmax(torch.matmul(query,key))
+        z = torch.matmul(z, value).permute(0, 2, 1).view(b, self.hidden_channels, h, w)
+        
+        x = x + self.proj(z)
+        if self.act is not None:
+            x = self.act(x)
+        return x
+
+class ConvBlock(torch.nn.Module):
+    def __init__(self, channels, kernels, acts, norms, img_size):
+        super().__init__()
+        self.layers = []
+        for i in range(len(kernels)):
+            self.layers.append( nn.Conv2d(channels[i], channels[i+1], 
+                                          kernel_size=kernels[i], stride=1, 
+                                          padding = 0 )) #padding = (kernels[i] - 1) // 2)
+            if kernels[i] == 3: img_size -= 2
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm2d(channels[i+1]) )
+            elif norms[i] == 'layer':
+                self.layers.append( nn.LayerNorm([channels[i+1], img_size, img_size]) )
+            if acts[i] != None:
+                self.layers.append(acts[i])
+        self.layers = nn.Sequential(*self.layers)
+      
+    def forward(self, x):
+        return self.layers(x)
+
+#TODO: Add variable length with pass through layers ie lambda x: x
+class MLP(torch.nn.Module):
+    def __init__(self, widths, acts, norms):
+        super().__init__()
+
+        self.layers = []
+        for i in range(len(acts)): 
+            self.layers.append( nn.Linear(widths[i], widths[i+1]) )
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm1d(widths[i+1]) )
+            elif norms[i] == 'layer':
+                self.layers.append( nn.LayerNorm(widths[i+1]) )
+            #elif None, skip
+            if acts[i] != None:
+                self.layers.append( acts[i] )
+        self.layers = nn.Sequential(*self.layers)
+        
+
+    def forward(self, x):
+        return self.layers(x)
+
+def sample_ConvAttn(trial, prefix):
+    channel_space = (1,2,4,8,16,32)
+    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    hidden_channels = channel_space[trial.suggest_int(prefix + '_hiddenchannel', 0, len(channel_space) - 1)]
+    act = act_space[trial.suggest_categorical(prefix + '_act', [k for k in range(len(act_space))])]
+    return hidden_channels, act
+
+#prefix of the name you suggest variables for, a prefix needs to be mapped to a unique block location.
+def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
+    #Search space to sample from
+    channel_space = (2,4,8,16,32,64)
+    kernel_space = (1,3)
+    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    norm_space = (None, 'layer', 'batch')
+
+    channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
+                                    for i in range(num_layers)] #Picks an integer an index of channel_space for easier sampling
+    kernels = [trial.suggest_categorical(prefix + '_kernels_' + str(i), kernel_space) for i in range(num_layers)]
+    norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
+    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [k for k in range(len(act_space))])] for i in range(num_layers)]
+
+    return channels, kernels, acts, norms 
+
+def sample_MLP(trial, in_dim, prefix = 'MLP', num_layers = 4):
+    width_space = (4,8,16,32,64)
+    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    norm_space = (None, 'layer', 'batch')
+
+    widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [2]
+    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [k for k in range(len(act_space))])] for i in range(num_layers)]
+    norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
+
+    return widths, acts, norms
+
+class CandidateArchitecture(torch.nn.Module):
+    def __init__(self, Blocks, MLP, hidden_channels, input_channels = 1):
+        super().__init__()
+        self.conv = nn.Conv2d(input_channels, hidden_channels, kernel_size=(3, 3), stride=(1, 1)) #Initial Projection Layer
+        self.Blocks = Blocks
+        self.MLP = MLP
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.Blocks(x)
+        x = torch.flatten(x, 1)
+        x = self.MLP(x)
+        return x
+
+class Identity(torch.nn.Module):
+    def __init__(self):
+        super(self).__init__()
+    
+    def forward(self, x):
+        return x
+
+#Leaving this in for later, currently not used/working.
+class TransformerBlock(torch.nn.Module):
+    def __init__(self, input_size = (4, 16, 9, 9)):
         super().__init__()
         embed_dim = input_size[-2] * input_size[-1]
                
@@ -28,27 +153,9 @@ class TransformerBlock(nn.Module):
         for l in self.layers:
           x = l(x)
 
-#Convolution Attention, [No MLP/FeedForward after], no need for sampling other than in/out channels
-#TODO: Should we add projection layer? should this be sampled from optuna?
-class ConvAttention(nn.Module):
-    def __init__(self, trial):
-        super().__init__(in_channels = 16, out_channels = 8)
-        #Attention Block
-        self.Wq = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-        self.Wk = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-        self.Wv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-        self.softmax = nn.Softmax(dim=1)
-
-    def forward(self, x):
-        query = self.Wq(x)
-        key = self.Wk(x)
-        value = self.Wv(x)
-        z = self.softmax(query * key) * value #BraggNN does not divide by d. Should we?
-        return x
-
-
-class SkipBlock(nn.Module):
-    def __init__(self, trial):
+#Leaving this in for later, currently not used/working.
+class SkipBlock(torch.nn.Module):
+    def __init__(self):
         super().__init__()
         #Sample hyperparameters
         self.input_size = (4,16,11,11)
@@ -77,80 +184,3 @@ class SkipBlock(nn.Module):
         x += z
         x = self.act[-1](x) #Activation after skip
         return x
-
-class ConvBlock(nn.Module):
-    def __init__(self, trial):
-        super().__init__()
-        #Sample hyperparameters
-        self.input_size = (4,16,11,11)
-        self.channels = [16,8,2]
-        self.kernels = [3,3] #[1,3,5]
-        self.act = [nn.ReLU(), nn.ReLU()] #pick from [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
-        self.norm = ['identity', 'identity'] #pick from ['identity', 'layer', 'batch']
-
-        self.layers = []
-        for i in range(len(self.kernels)):
-            self.layers.append( nn.Conv2d(self.channels[i], self.channels[i+1], 
-                                          kernel_size=self.kernels[i], stride=1, 
-                                          padding = (self.kernels[i] - 1) // 2) )
-            if self.norm[i] == 'batch':
-                self.layers.append( nn.BatchNorm2d(self.channels[i+1]) )
-            elif self.norm[i] == 'layer':
-                self.layers.append( nn.LayerNorm(self.input_size) )
-
-            self.layers.append( self.act[i] )
-      
-
-    def forward(self, x):
-        for l in self.layers:
-            x = l(x)
-        return x
-
-class MLP(torch.nn.Module):
-    def __init__(self, trial):
-        super().__init__()
-        #Sample hyperparameters
-        self.widths = [162, 64, 32, 16, 2]
-        self.input_size = (4,16,11,11)
-        self.act = [nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.ReLU()] #pick from [nn.ReLU(), nn.LeakyReLU(), nn.GeLU(), lambda x: x]
-        self.norm = [None, None, None, None] #pick from [None, 'layer', 'batch'], identity means do nothing or we can make this None
-
-        self.layers = []
-        for i in range(len(self.act)):
-            self.layers.append( nn.Linear(self.widths[i], self.widths[i+1]) )
-            if self.norm[i] == 'batch':
-                self.layers.append( nn.BatchNorm2d(self.channels[i+1]) )
-            elif self.norm[i] == 'layer':
-                self.layers.append( nn.LayerNorm(self.input_size) )
-
-            self.layers.append( self.act[i] )
-      
-
-    def forward(self, x):
-        for l in self.layers:
-            x = l(x)
-        return x
-
-class CandidateArchitecture(torch.nn.Module):
-    def __init__(self, trial):
-        super().__init__()
-        channels = 16
-        self.conv = nn.Conv2d(1, channels, kernel_size=(3, 3), stride=(1, 1))
-        self.feature_extractor = [ ConvAttention(), SkipBlock(), ConvBlock() ]
-        self.MLP = MLP()
-      
-
-    def forward(self, x):
-        x = self.conv(x) #for attention, this acts as the tokenizer
-        for l in self.feature_extractor:
-            x = l(x)
-        x = torch.flatten(x, 1)
-        x = self.MLP(x)
-        return x
-
-"""
-model = CandidateArchitecture()
-x = torch.randn((4,1,11,11))
-x = model(x)
-print(x.size())
-"""
