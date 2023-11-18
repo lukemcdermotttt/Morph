@@ -1,0 +1,1 @@
+Trial 0, Mean Distance: 0.4299675226211548, Validation Loss: 0.0009166855618657012, Hyperparams: {'lr': 1.1313951221951834e-05, 'weight_decay': 0.0007036925301656204, 'momentum': 0.9955726555856602, 'scheduler': 'ExponentialLR', 'gamma': 0.792415678670614}

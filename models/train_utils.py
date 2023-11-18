@@ -9,7 +9,7 @@ import torch.nn as nn
 import os
 from datetime import datetime
 
-def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, num_epochs, save=True, patience=5):
+def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, num_epochs, patience=5):
     curr_patience = patience
     previous_epoch_loss = float('inf')
     
@@ -53,4 +53,35 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
     return previous_epoch_loss
 
     
+def get_performance(model, dataloader, device, psz=11):
+    distances = []
+    with torch.no_grad():
+        for features, true_locs in dataloader:
+            features = features.to(device)
+            preds = model(features)  # assuming model outputs normalized [px, py]
+            preds = preds.cpu().numpy()
 
+            # Calculate Euclidean distance
+            distance = np.sqrt(np.sum((preds - true_locs.numpy()) ** 2, axis=1)) * 11 # psz=11
+            distances.extend(distance)  # Changed from append to extend
+
+    mean_distance = np.mean(distances)
+    return mean_distance
+
+def get_param_count(model):
+    count = 0
+    count += sum(p.numel() for p in model.Blocks.parameters())
+    count += sum(p.numel() for p in model.MLP.parameters())
+    count += sum(p.numel() for p in model.conv.parameters())
+
+    print('Architecture: ', model.conv,model.Blocks, model.MLP)
+    return count
+
+def get_inference_time(model,device):
+    #inference time
+    x = torch.randn((256,1,11,11)).to(device)
+    start = time.time()
+    for _ in range(100):
+        y = model(x)
+    end = time.time()
+    return end-start

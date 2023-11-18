@@ -1,0 +1,3 @@
+Trial 0, Mean Distance: 5.507526397705078, Validation Loss: 0.12573779241314956, Hyperparams: {'lr': 0.0017579221293316178, 'weight_decay': 1.6503326071220925e-05, 'momentum': 0.8318780750520466, 'scheduler': 'ExponentialLR', 'gamma': 0.9473921991031501}
+Trial 1, Mean Distance: 7.78492546081543, Validation Loss: 0.25096833014062475, Hyperparams: {'lr': 4.969921636130547e-05, 'weight_decay': 0.0009617485068864692, 'momentum': 0.85331593637746, 'scheduler': 'StepLR', 'step_size': 53, 'gamma': 0.42826214631590165}
+Trial 2, Mean Distance: 5.509991645812988, Validation Loss: 0.12594045113239968, Hyperparams: {'lr': 0.0004799939270741362, 'weight_decay': 1.3409593102967052e-05, 'momentum': 0.9738861935848167, 'scheduler': 'ExponentialLR', 'gamma': 0.9112721053790326}
