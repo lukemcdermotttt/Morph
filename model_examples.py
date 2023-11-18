@@ -9,43 +9,15 @@ import time
 
 x = torch.randn((256,1,11,11))
 
-#High performing model found by search
+#High performing model found by search, Mean Distance: 0.203, BOPs: 17.3 Million, Param Count: 13922
 Blocks = nn.Sequential(
-    ConvBlock([24,16,16], [3,1], [nn.GELU(), nn.ReLU()], [None, 'batch'],img_size=9),
-    ConvAttn(16,1),
-    ConvBlock([16,4,16], [3,3], [nn.GELU(), nn.GELU()], [None, 'batch'],img_size=7)
+    ConvBlock([16,4,2], [1,3], [nn.GELU(), nn.GELU()], [None, 'batch'],img_size=9)
 )
-mlp = MLP(widths=[144, 64, 16, 4, 2], acts=[nn.GELU(), None, None, None], norms=['layer', 'layer','layer',None])
-model = CandidateArchitecture(Blocks,mlp,24)
+mlp = MLP(widths=[98, 64, 8, 4, 2], acts=[nn.ReLU(), nn.GELU(), nn.GELU(), None], norms=['layer', 'batch','layer',None])
+model = CandidateArchitecture(Blocks,mlp,16)
 y = model(x)
-print('Our Model:')
+print('Example Model:')
 print(model)
-device = torch.device("cuda:1")
-model.to(device)
-dummy_input = torch.randn((256,1,11,11), dtype=torch.float).to(device)
-
-# INIT LOGGERS
-starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-repetitions = 100000
-warmup_repetitions = 5000
-timings=np.zeros((repetitions,1))
-#GPU-WARM-UP
-for _ in range(warmup_repetitions):
-    _ = model(dummy_input)
-# MEASURE PERFORMANCE
-with torch.no_grad():
-    for rep in range(repetitions):
-        starter.record()
-        _ = model(dummy_input)
-        ender.record()
-        # WAIT FOR GPU SYNC
-        torch.cuda.synchronize()
-        curr_time = starter.elapsed_time(ender)
-        timings[rep] = curr_time
-
-mean_syn = np.sum(timings) / repetitions
-std_syn = np.std(timings)
-print(mean_syn, std_syn)
 
 #OpenHLS Model
 Blocks = nn.Sequential(
@@ -57,29 +29,7 @@ model = CandidateArchitecture(Blocks,mlp,16)
 y = model(x)
 print('OpenHLS Model:')
 print(model)
-model.to(device)
-dummy_input = torch.randn((256,1,11,11), dtype=torch.float).to(device)
 
-# INIT LOGGERS
-starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-timings=np.zeros((repetitions,1))
-#GPU-WARM-UP
-for _ in range(warmup_repetitions):
-    _ = model(dummy_input)
-# MEASURE PERFORMANCE
-with torch.no_grad():
-    for rep in range(repetitions):
-        starter.record()
-        _ = model(dummy_input)
-        ender.record()
-        # WAIT FOR GPU SYNC
-        torch.cuda.synchronize()
-        curr_time = starter.elapsed_time(ender)
-        timings[rep] = curr_time
-
-mean_syn = np.sum(timings) / repetitions
-std_syn = np.std(timings)
-print(mean_syn, std_syn)
 
 #BraggNN model
 Blocks = nn.Sequential(
@@ -91,48 +41,3 @@ model = CandidateArchitecture(Blocks,mlp,64)
 y = model(x)
 print('Original BraggNN Model:')
 print(model)
-model.to(device)
-dummy_input = torch.randn((256,1,11,11), dtype=torch.float).to(device)
-
-# INIT LOGGERS
-starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-timings=np.zeros((repetitions,1))
-#GPU-WARM-UP
-for _ in range(warmup_repetitions):
-    _ = model(dummy_input)
-# MEASURE PERFORMANCE
-with torch.no_grad():
-    for rep in range(repetitions):
-        starter.record()
-        _ = model(dummy_input)
-        ender.record()
-        # WAIT FOR GPU SYNC
-        torch.cuda.synchronize()
-        curr_time = starter.elapsed_time(ender)
-        timings[rep] = curr_time
-
-mean_syn = np.sum(timings) / repetitions
-std_syn = np.std(timings)
-print(mean_syn, std_syn)
-
-
-
-
-"""
-for h in [1,8,2,4,6,10]:
-    Blocks = nn.Sequential(
-        ConvBlock([24,16,16], [3,1], [nn.GELU(), nn.ReLU()], [None, 'batch']),
-        ConvAttn(16,h),
-        ConvBlock([16,4,16], [3,3], [nn.GELU(), nn.GELU()], [None, 'batch'])
-    )
-    mlp = MLP(widths=[1296, 64, 16, 4, 2], acts=[nn.GELU(), None, None, None], norms=['layer', 'layer','layer',None])
-
-    model = CandidateArchitecture(Blocks, mlp,24)
-
-    x = torch.randn((256,1,11,11))
-    start = time.time()
-    for _ in range(10000):
-        model(x)
-    end = time.time()
-    print('Inference time w/ Hidden Dim in Attn = ' + str(h) + ': ', end-start)
-"""
