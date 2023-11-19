@@ -66,7 +66,7 @@ def calculate_layer_sparsity(model):
                     layer_sparsity[f"{name}.layers[{i}]"] = sparsity
     return layer_sparsity
 
-def matmul_3darray_bops(shape1, shape2, bit_width):
+def old_matmul_3darray_bops(shape1, shape2, bit_width):
     """
     Calculate the Bit Operations (BOP) for multiplying two 3D arrays.
     """
@@ -78,15 +78,34 @@ def matmul_3darray_bops(shape1, shape2, bit_width):
         raise ValueError("Inner dimensions of arrays do not match for matrix multiplication.")
 
     total_multiplications = b * hw * h_w * hc1
-
+    
     total_additions = b * hw * h_w * (hc1 - 1)
 
     bop_per_multiplication = bit_width ** 2
     bop_per_addition = bit_width
 
+    batch, n, d = shape1
+
+    print('my guess:',  )
+    print('tot mult:', total_multiplications, bop_per_multiplication, total_multiplications * bop_per_multiplication)
     total_bop = (total_multiplications * bop_per_multiplication) + (total_additions * bop_per_addition)
 
     return total_bop
+
+def matmul_3darray_bops(matrix_a_dims, matrix_b_dims,sparsity,bit_width=32):
+    a_batch_size, a_embed_dim, seq_len  = matrix_a_dims
+    b_batch_size, seq_len, b_embed_dim  = matrix_b_dims
+    if a_batch_size != b_batch_size or b_embed_dim != b_embed_dim:
+        raise ValueError("Inner dimensions of arrays do not match for matrix multiplication.")
+    batch_size = a_batch_size
+    embed_dim = a_embed_dim
+
+    mult_bops = bit_width**2
+    add_bops = bit_width
+    total_mult_bops = seq_len * seq_len * embed_dim * mult_bops * (1 - sparsity)
+    total_add_bops = seq_len * seq_len * (embed_dim - 1) * add_bops
+    total_bops = total_mult_bops + total_add_bops
+    return total_bops
 
 def calculate_linear_bops( layer, sparsity, weight_bit_width=32, activation_bit_width=32):
     input_features, output_features = layer.in_features, layer.out_features
@@ -150,9 +169,8 @@ def calculate_convblock_bops(conv_block, sparsity_dict=None, weight_bit_width=32
 
     return total_bops
 
-def calculate_convattn_bops(module, sparsity, input_shape, weight_bit_width=32, activation_bit_width=32):
+def old_calculate_convattn_bops(module, sparsity, input_shape, weight_bit_width=32, activation_bit_width=32):
     total_bops = 0
-
 
     for i, conv in enumerate([module.Wq, module.Wk, module.Wv, module.proj]):
         conv_bops = calculate_conv2d_bops(conv, sparsity[i], activation_bit_width, weight_bit_width)
@@ -171,21 +189,47 @@ def calculate_convattn_bops(module, sparsity, input_shape, weight_bit_width=32, 
     print(f"softmax bops: {softmax_bops}")
     total_bops += softmax_bops
 
+    #MatMul
     query_shape = (b, hw, hidden_channels)
     keyshape = (b, hidden_channels, hw)
     matmul1_bops = matmul_3darray_bops(query_shape,keyshape, b_w)
-    matmul1_bops_old = b* hw**2 * (hidden_channels * b_w**2 + (hidden_channels-1)*b_w)
 
-    assert(np.equal(matmul1_bops,matmul1_bops_old))
-
-
-    z_dims=(b,hw,hw)
+    z_dims=(b,hidden_channels, hidden_channels)
     value_dims=(b, hw, hidden_channels)
     matmul2_bops= matmul_3darray_bops(z_dims, value_dims, b_w)
-
+    print(matmul1_bops, matmul2_bops)
     # Add the matmul BOPS to the total
     total_bops += matmul1_bops + matmul2_bops
+    print('Matmul bops:', matmul1_bops + matmul2_bops,  matmul1_bops, matmul2_bops)
+    return total_bops
 
+def calculate_convattn_bops(module, input_shape, bit_width):
+    total_bops = 0
+
+    for i, conv in enumerate([module.Wq, module.Wk, module.Wv, module.proj]):
+        conv_bops = calculate_conv2d_bops(conv, 0, bit_width, bit_width) #TODO: Change to calculate sparsity
+        total_bops += conv_bops
+    print(f"Total conv bops: {total_bops}")
+    
+    #Input is reshaped
+    batch_size, seq_len, h, w = input_shape
+    embed_dim = h*w
+
+    # Softmax
+    softmax_bops = batch_size * embed_dim**2 * 1.5 * (bit_width-1) + batch_size * embed_dim * (embed_dim-1) + batch_size*(embed_dim)**2
+    print(f"Softmax bops: {softmax_bops}")
+    total_bops += softmax_bops
+
+    #MatMul
+    Q_shape = (batch_size, embed_dim, seq_len)
+    K_shape = (batch_size, seq_len, embed_dim)
+    QK_bops = matmul_3darray_bops(Q_shape,K_shape, 0, bit_width) #TODO: Change for sparsity
+
+    S_dims=(batch_size, seq_len, seq_len) #S is the output scores from softmax
+    V_dims=(batch_size, embed_dim, seq_len)
+    SV_bops= matmul_3darray_bops(S_dims, V_dims, 0, bit_width) #TODO: Change for sparsity
+    print(QK_bops, SV_bops)
+    total_bops += QK_bops + SV_bops
     return total_bops
 
 def calculate_mlpblock_bops(mlpblock, sparsity_dict=None, weight_bit_width=32, activation_bit_width=32):
@@ -205,7 +249,6 @@ def calculate_mlpblock_bops(mlpblock, sparsity_dict=None, weight_bit_width=32, a
 
 
     return total_bops
-
 
 def BOP_counter(model, input_shape, weight_bit_width=32, activation_bit_width=32):
   getInputShapes(model, input_shape)
@@ -227,4 +270,4 @@ def BOP_counter(model, input_shape, weight_bit_width=32, activation_bit_width=32
   return full_bops
 
 
-
+print(matmul_3darray_bops((1,81,8), (1, 8, 81), 0, 32))

@@ -8,6 +8,7 @@ from functools import partial
 import torch.nn as nn
 import os
 from datetime import datetime
+import time
 
 def train_model(model, optimizer, scheduler, criterion, train_loader, valid_loader, device, num_epochs, patience=5):
     curr_patience = patience
@@ -52,7 +53,6 @@ def train_model(model, optimizer, scheduler, criterion, train_loader, valid_load
 
     return previous_epoch_loss
 
-    
 def get_performance(model, dataloader, device, psz=11):
     distances = []
     with torch.no_grad():

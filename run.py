@@ -10,6 +10,16 @@ from utils.bops import *
 
 
 #Optuna Hyperparameters to recreate the OpenHLS BraggNN model
+Example1_params = {
+    'Proj_outchannel': 3, 'b0': 'None', 'b1': 'Conv', 'b2': 'Conv', 'b1_Conv_channels_0': 4, 'b1_Conv_channels_1': 5, 'b1_Conv_kernels_0': 1, 'b1_Conv_kernels_1': 3, 'b1_Conv_norms_0': 'layer', 'b1_Conv_norms_1': None, 'b1_Conv_acts_0': 0, 'b1_Conv_acts_1': 1, 'b2_Conv_channels_0': 1, 'b2_Conv_channels_1': 1, 'b2_Conv_kernels_0': 3, 'b2_Conv_kernels_1': 3, 'b2_Conv_norms_0': None, 'b2_Conv_norms_1': None, 'b2_Conv_acts_0': 1, 'b2_Conv_acts_1': 1, 'MLP_width_0': 1, 'MLP_width_1': 2, 'MLP_width_2': 4, 'MLP_acts_0': 3, 'MLP_acts_1': 3, 'MLP_acts_2': 1, 'MLP_acts_3': 0, 'MLP_norms_0': 'layer', 'MLP_norms_1': 'batch', 'MLP_norms_2': 'batch', 'MLP_norms_3': None
+}
+Example2_params = {
+    'Proj_outchannel': 0, 'b0': 'Conv', 'b1': 'Conv', 'b2': 'Conv', 'b0_Conv_channels_0': 5, 'b0_Conv_channels_1': 4, 'b0_Conv_kernels_0': 3, 'b0_Conv_kernels_1': 3, 'b0_Conv_norms_0': 'batch', 'b0_Conv_norms_1': 'layer', 'b0_Conv_acts_0': 0, 'b0_Conv_acts_1': 0, 'b1_Conv_channels_0': 2, 'b1_Conv_channels_1': 2, 'b1_Conv_kernels_0': 3, 'b1_Conv_kernels_1': 3, 'b1_Conv_norms_0': 'layer', 'b1_Conv_norms_1': 'batch', 'b1_Conv_acts_0': 1, 'b1_Conv_acts_1': 1, 'b2_Conv_channels_0': 2, 'b2_Conv_channels_1': 2, 'b2_Conv_kernels_0': 1, 'b2_Conv_kernels_1': 3, 'b2_Conv_norms_0': 'batch', 'b2_Conv_norms_1': 'batch', 'b2_Conv_acts_0': 2, 'b2_Conv_acts_1': 0, 'MLP_width_0': 1, 'MLP_width_1': 4, 'MLP_width_2': 3, 'MLP_acts_0': 0, 'MLP_acts_1': 2, 'MLP_acts_2': 0, 'MLP_acts_3': 0, 'MLP_norms_0': None, 'MLP_norms_1': 'layer', 'MLP_norms_2': 'batch', 'MLP_norms_3': None
+}
+Example3_params = {
+    'Proj_outchannel': 2, 'b0': 'Conv', 'b1': 'None', 'b2': 'Conv', 'b0_Conv_channels_0': 2, 'b0_Conv_channels_1': 2, 'b0_Conv_kernels_0': 1, 'b0_Conv_kernels_1': 1, 'b0_Conv_norms_0': None, 'b0_Conv_norms_1': None, 'b0_Conv_acts_0': 3, 'b0_Conv_acts_1': 3, 'b2_Conv_channels_0': 1, 'b2_Conv_channels_1': 4, 'b2_Conv_kernels_0': 1, 'b2_Conv_kernels_1': 1, 'b2_Conv_norms_0': 'layer', 'b2_Conv_norms_1': 'layer', 'b2_Conv_acts_0': 0, 'b2_Conv_acts_1': 0, 'MLP_width_0': 1, 'MLP_width_1': 2, 'MLP_width_2': 3, 'MLP_acts_0': 2, 'MLP_acts_1': 0, 'MLP_acts_2': 2, 'MLP_acts_3': 0, 'MLP_norms_0': 'layer', 'MLP_norms_1': 'batch', 'MLP_norms_2': 'batch', 'MLP_norms_3': None
+}
+
 OpenHLS_params = {
     'b0': 'ConvAttn',
     'b1': 'Conv',
@@ -94,7 +104,7 @@ def objective(trial):
         elif block_type == 'ConvAttn':
             hidden_channels, act = sample_ConvAttn(trial, 'b' + str(i) + '_ConvAttn')
             Blocks.append(ConvAttn(block_channels[-1], hidden_channels, act))
-            bops += calculate_convattn_bops(Blocks[-1], sparsity=[0]*4, input_shape = [batch_size, block_channels[-1], img_size, img_size], weight_bit_width=32, activation_bit_width=32)
+            bops += calculate_convattn_bops(Blocks[-1], input_shape = [batch_size, block_channels[-1], img_size, img_size], bit_width=32)
             #ConvAttn doesnt change channels bc skip connect
 
     Blocks = nn.Sequential(*Blocks)
@@ -110,6 +120,7 @@ def objective(trial):
     print(model)
     print('BOPs:', bops)
     #Evaluate Model
+    print('Trial ', trial.number,' begins evaluation.')
     mean_distance, inference_time, validation_loss, param_count = evaluate(model)
     with open("./optuna_trials.txt", "a") as file:
         file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, BOPs: {bops}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
@@ -118,7 +129,7 @@ def objective(trial):
 
 
 def evaluate(model):
-    num_epochs = 150
+    num_epochs = 50
     device = torch.device('cuda:1')
     model = model.to(device)
 
@@ -137,9 +148,12 @@ def evaluate(model):
     return mean_distance, inference_time, validation_loss, param_count
 
 def main():
-    study = optuna.create_study(sampler=optuna.samplers.NSGAIISampler(), directions=['minimize', 'minimize']) #min mean_distance and inference time
+    study = optuna.create_study(sampler=optuna.samplers.NSGAIISampler(population_size = 20), directions=['minimize', 'minimize']) #min mean_distance and inference time
     study.enqueue_trial(OpenHLS_params)
     study.enqueue_trial(BraggNN_params)
+    study.enqueue_trial(Example1_params)
+    study.enqueue_trial(Example2_params)
+    study.enqueue_trial(Example3_params)
     study.optimize(objective, n_trials=1000)
 
     # Print the best trial
