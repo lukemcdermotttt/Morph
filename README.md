@@ -12,15 +12,16 @@ Install dependencies: ``pip install -r requirements.txt``
 Generate the dataset by running ``python data/get_dataset.py``
 
 ### Global Search
-Run ``python run.py`` to search across architectures that minimize mean_distance & BOPs, the reports will be at optuna_trials.txt
+Run ``python global_search.py`` to search across architectures that minimize mean_distance & BOPs, the reports will be at global_search.txt
 
-### Examples of using blocks.py to recreate these architectures in global search
-Check out ``model_examples.py`` to see how we can create architectures from these blocks.
+#### Examples of using blocks.py to recreate these architectures in global search
+Check out ``examples/model_examples.py`` to see how we can create architectures from these blocks.
+For examples to see how the Optuna selects the hyperparameters to create these blocks, see ``examples/hyperparam_examples.py``
 
-### HPO for Better Training
-In ``HPO_NAC.py``, we initialize the best model from Global Search; however, can replace this with any model you want. This will save all the trials & create the file ``NAC_HPO_trials.txt``. To run this, change the cuda device and run ``python HPO_NAC.py``.
+### HPO for Training Optimization
+In ``examples/NAC/HPO_NAC.py``, we initialize the best model from Global Search; however, can replace this with any model you want. This will save all the trials & create the file ``NAC_HPO_trials.txt``. To run this, change the cuda device and run ``python examples/NAC/HPO_NAC.py``.
 
-To rerun HPO for BraggNN and OpenHLS models, we saved separate files. You can run ``HPO_BraggNN.py`` & ``HPO_OpenHLS.py`` which saves to ``BraggNN_HPO_trials.txt`` and ``OpenHLS_HPO_trials.txt`` accordingly.
+To rerun HPO for BraggNN and OpenHLS models, we saved separate files. You can run ``HPO_BraggNN.py`` & ``HPO_OpenHLS.py`` which saves to ``BraggNN_HPO_trials.txt`` and ``OpenHLS_HPO_trials.txt`` accordingly in their respective folders.
 
-### Compress to minimize BOPs
-Once you have an optimal training, edit the hyperparameters in ``Compress.py`` and run  ``python Compress.py``.
+### Model Compression to minimize BOPs further
+Once you have an optimal training, edit the hyperparameters in ``compress.py`` and run  ``python compress.py``. This will loop across different bit widths and perform iterative magnitude pruning with quantization-aware training. We saved our results with compressing NAC in ``examples/NAC/NAC_Compress.txt``.
