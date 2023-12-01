@@ -33,8 +33,8 @@ def get_sparsities(model):
     return tuple(sparsities)
 
 def main():
-    #Trial 164 Dense Model
-    b = 8
+    #NAC Model
+    b = 8 #Bit width 
     Blocks = nn.Sequential(
         QAT_ConvBlock([32,4,32], [1,1], [nn.ReLU(), nn.LeakyReLU(negative_slope=0.01)], [None, 'batch'], img_size=9, bit_width=b),
         QAT_ConvBlock([32,4,32], [1,3], [nn.GELU(), nn.GELU()], ['batch', 'layer'], img_size=9, bit_width=b),

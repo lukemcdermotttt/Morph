@@ -24,4 +24,4 @@ In ``examples/NAC/HPO_NAC.py``, we initialize the best model from Global Search;
 To rerun HPO for BraggNN and OpenHLS models, we saved separate files. You can run ``HPO_BraggNN.py`` & ``HPO_OpenHLS.py`` which saves to ``BraggNN_HPO_trials.txt`` and ``OpenHLS_HPO_trials.txt`` accordingly in their respective folders.
 
 ### Model Compression to minimize BOPs further
-Once you have an optimal training, edit the hyperparameters in ``compress.py`` and run  ``python compress.py``. This will loop across different bit widths and perform iterative magnitude pruning with quantization-aware training. We saved our results with compressing NAC in ``examples/NAC/NAC_Compress.txt``.
+Once you have an optimal training, edit the hyperparameters in ``compress.py`` and run  ``python compress.py``. This will perform iterative magnitude pruning with quantization-aware training. Change the max pruning iteration and the bit_width ``b`` for different compression levels. We saved our results with compressing NAC in ``examples/NAC/NAC_Compress.txt``.
