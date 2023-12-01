@@ -18,5 +18,9 @@ Run ``python run.py`` to search across architectures that minimize mean_distance
 Check out ``model_examples.py`` to see how we can create architectures from these blocks.
 
 ### HPO for Better Training
-In ``HPO.py``, initialize the model you want to optimize training for & update the filename for saving the trials. Then, run ``python HPO.py``.
-To rerun HPO for BraggNN and OpenHLS models, we saved separate files. 
+In ``HPO_NAC.py``, we initialize the best model from Global Search; however, can replace this with any model you want. This will save all the trials & create the file ``NAC_HPO_trials.txt``. To run this, change the cuda device and run ``python HPO_NAC.py``.
+
+To rerun HPO for BraggNN and OpenHLS models, we saved separate files. You can run ``HPO_BraggNN.py`` & ``HPO_OpenHLS.py`` which saves to ``BraggNN_HPO_trials.txt`` and ``OpenHLS_HPO_trials.txt`` accordingly.
+
+### Compress to minimize BOPs
+Once you have an optimal training, edit the hyperparameters in ``Compress.py`` and run  ``python Compress.py``.
