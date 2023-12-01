@@ -85,3 +85,4 @@ def get_inference_time(model,device):
         y = model(x)
     end = time.time()
     return end-start
+

@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import optuna
-
+import brevitas.nn as qnn
 
 #Convolution Attention as done in BraggNN, [No MLP/FeedForward after]
 #TODO: BraggNN does not divide by d. Should we? lets give it the option
@@ -18,11 +17,12 @@ class ConvAttn(torch.nn.Module):
 
     def forward(self, x):
         b, c, h, w = x.size()
+        #q shape (b, seq, embed_dim) -> permute -> (b, embed_dim, seq)
         query = self.Wq(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
         key = self.Wk(x).view(b, self.hidden_channels, -1)
         value = self.Wv(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
 
-        z = self.softmax(torch.matmul(query,key))
+        z = self.softmax(torch.matmul(query,key)) 
         z = torch.matmul(z, value).permute(0, 2, 1).view(b, self.hidden_channels, h, w)
         
         x = x + self.proj(z)
@@ -125,6 +125,105 @@ class Identity(torch.nn.Module):
     
     def forward(self, x):
         return x
+
+class QAT_ConvAttn(torch.nn.Module):
+    def __init__(self, in_channels = 16, hidden_channels = 8, norm = None, act = None, bit_width=8):
+        super().__init__()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        self.hidden_channels = hidden_channels
+        self.Wq = qnn.QuantConv2d(in_channels, hidden_channels, kernel_size=1, stride=1, weight_bit_width=bit_width)
+        self.Wk = qnn.QuantConv2d(in_channels, hidden_channels, kernel_size=1, stride=1, weight_bit_width=bit_width)
+        self.Wv = qnn.QuantConv2d(in_channels, hidden_channels, kernel_size=1, stride=1, weight_bit_width=bit_width)
+        self.softmax = nn.Softmax(dim=-1) # kept in floating point
+        self.proj = qnn.QuantConv2d(hidden_channels, in_channels, kernel_size=1, stride=1, weight_bit_width=bit_width)
+        self.act = act if act is not None else qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        # Initialize the QuantIdentity layer for softmax output
+        #self.quant_identity = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+    def forward(self, x):
+        x = self.quant_inp(x)
+        #print("Entering ConvAttn - Input shape:", x.shape)
+        b, c, h, w = x.size()
+        query = self.Wq(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
+        key = self.Wk(x).view(b, self.hidden_channels, -1)
+        value = self.Wv(x).view(b, self.hidden_channels, -1).permute(0, 2, 1)
+        z = self.softmax(torch.matmul(query,key))
+        z = torch.matmul(z, value).permute(0, 2, 1).view(b, self.hidden_channels, h, w)
+        z = self.quant_inp(z) #z = self.quant_identity(z)
+        x = x + self.proj(z)
+        if self.act is not None:
+            x = self.act(x)
+        return x
+   
+class QAT_ConvBlock(nn.Module):
+    def __init__(self, channels, kernels, acts, norms, img_size, bit_width=8):
+        super().__init__()
+        self.layers = nn.Sequential()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        for i in range(len(kernels)):
+            conv = qnn.QuantConv2d(channels[i], channels[i+1], kernel_size=kernels[i], stride=1, padding=0, weight_bit_width=bit_width)
+            self.layers.append(conv)
+            if kernels[i] == 3: img_size -= 2
+            if norms[i] == 'batch':
+                norm_layer = nn.BatchNorm2d(channels[i+1])
+                self.layers.append(norm_layer)
+            elif norms[i] == 'layer':
+                norm_layer = nn.LayerNorm([channels[i+1], img_size, img_size])
+                self.layers.append(norm_layer)
+            if norms[i] is not None:
+                self.layers.append(qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True))
+            if acts[i] is not None:
+                act_layer = acts[i] if isinstance(acts[i], nn.Module) else qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+                self.layers.append(act_layer)
+
+    def forward(self, x):
+        #print("entering block")
+        for layer in self.layers:
+            x = self.quant_inp(x)
+            x = layer(x)
+        #print("exiting block")
+        return x
+    
+class QAT_MLP(torch.nn.Module):
+    def __init__(self, widths, acts, norms, bit_width=8):
+        super().__init__()
+        self.layers = nn.Sequential()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        for i in range(len(acts)):
+            linear_layer = qnn.QuantLinear(widths[i], widths[i+1], bias=True, weight_bit_width=bit_width)
+            self.layers.add_module(f'linear_{i}', linear_layer)
+            if norms[i] == 'batch':
+                self.layers.add_module(f'norm_{i}', nn.BatchNorm1d(widths[i+1]))
+            elif norms[i] == 'layer':
+                self.layers.add_module(f'norm_{i}', nn.LayerNorm(widths[i+1]))
+            if acts[i] is not None:
+                act_layer = acts[i] if isinstance(acts[i], nn.Module) else qnn.QuantReLU(bit_width=bit_width, return_quant_tensor=True)
+                self.layers.add_module(f'act_{i}', act_layer)
+                
+    def forward(self, x):
+        x = self.quant_inp(x)
+        for i, layer in enumerate(self.layers):
+            x = self.quant_inp(x)
+            x = layer(x)
+        return x
+    
+class QAT_CandidateArchitecture(torch.nn.Module):
+    def __init__(self, Blocks, MLP, hidden_channels, input_channels=1, bit_width=8):
+        super().__init__()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True) # initial layer to initialize quantization
+        self.conv = qnn.QuantConv2d(input_channels, hidden_channels, kernel_size=(3, 3), # initial projection layer quantized
+                                    stride=(1, 1), weight_bit_width=bit_width)
+        self.Blocks = Blocks
+        self.MLP = MLP
+    def forward(self, x):
+        x = self.quant_inp(x)
+        x = self.conv(x)
+        x = self.Blocks(x)
+        x = torch.flatten(x, 1)
+        x = self.MLP(x)
+        return x
+    
+
+    
 
 #Leaving this in for later, currently not used/working.
 class TransformerBlock(torch.nn.Module):
