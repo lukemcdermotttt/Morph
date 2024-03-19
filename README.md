@@ -1,6 +1,6 @@
 # Morph: A Model Optimization Toolkit for Physics
-See our slides for a brief background and outline for this toolkit: https://docs.google.com/presentation/d/1K_j91n0vi3mIQRGt6x2fCow_2H_Oc68IvZFtkST-uvs/edit?usp=sharing
 We plan to add more tasks & examples to this toolkit such as Jet Classification, Tagging, & Anomaly Detection.
+This repository is in the process of getting cleaned, see Rework branch for updates.
 
 # Directions
 ### Set up Environment
