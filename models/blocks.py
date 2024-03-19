@@ -119,6 +119,19 @@ class CandidateArchitecture(torch.nn.Module):
         x = self.MLP(x)
         return x
 
+    
+class DeepSetsArchitecture(torch.nn.Module):
+    def __init__(self, phi, rho):
+        super().__init__()
+        self.phi = phi
+        self.rho = rho
+
+    def forward(self, x):
+        x = self.phi(x)
+        x = torch.mean(x, dim=1)
+        x = self.rho(x)
+        return x
+
 class Identity(torch.nn.Module):
     def __init__(self):
         super(self).__init__()
