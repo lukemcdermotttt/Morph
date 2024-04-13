@@ -36,6 +36,7 @@ class NAC(torch.nn.Module):
         self.norm6 = nn.BatchNorm1d(4)#nn.LayerNorm((4))
         self.act8 = nn.LeakyReLU()
         self.fc4 = nn.Linear(4,2)
+        
     def forward(self,x):
         x = self.conv1(x)
         x = self.conv2(x)
