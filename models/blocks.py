@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import brevitas.nn as qnn
 
-#Convolution Attention as done in BraggNN, [No MLP/FeedForward after]
-#TODO: BraggNN does not divide by d. Should we? lets give it the option
+#NOTE: BraggNN does not divide by sqrt(d) like in traditional trasnformers
 class ConvAttn(torch.nn.Module):
     def __init__(self, in_channels = 16, hidden_channels = 8, norm = None, act = None):
         super().__init__()
@@ -42,7 +41,7 @@ class ConvBlock(torch.nn.Module):
             if norms[i] == 'batch':
                 self.layers.append( nn.BatchNorm2d(channels[i+1]) )
             elif norms[i] == 'layer':
-                self.layers.append( nn.LayerNorm([channels[i+1], img_size, img_size]) )
+                self.layers.append( nn.LayerNorm([channels[i+1], img_size, img_size]) ) #DEPRECATED
             if acts[i] != None:
                 self.layers.append(acts[i])
         self.layers = nn.Sequential(*self.layers)
@@ -61,7 +60,7 @@ class MLP(torch.nn.Module):
             if norms[i] == 'batch':
                 self.layers.append( nn.BatchNorm1d(widths[i+1]) )
             elif norms[i] == 'layer':
-                self.layers.append( nn.LayerNorm(widths[i+1]) )
+                self.layers.append( nn.LayerNorm(widths[i+1]) ) #DEPRECATED
             #elif None, skip
             if acts[i] != None:
                 self.layers.append( acts[i] )
@@ -84,7 +83,7 @@ def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
     channel_space = (2,4,8,16,32,64)
     kernel_space = (1,3)
     act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
-    norm_space = (None, 'layer', 'batch')
+    norm_space = (None, 'batch') #Note: Removed layer norm!
 
     channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
                                     for i in range(num_layers)] #Picks an integer an index of channel_space for easier sampling
@@ -97,7 +96,7 @@ def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
 def sample_MLP(trial, in_dim, prefix = 'MLP', num_layers = 4):
     width_space = (4,8,16,32,64)
     act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
-    norm_space = (None, 'layer', 'batch')
+    norm_space = (None, 'batch') #Note: Removed layer norm!
 
     widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [2]
     acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [k for k in range(len(act_space))])] for i in range(num_layers)]
@@ -118,7 +117,6 @@ class CandidateArchitecture(torch.nn.Module):
         x = torch.flatten(x, 1)
         x = self.MLP(x)
         return x
-
     
 class DeepSetsArchitecture(torch.nn.Module):
     def __init__(self, phi, rho):
@@ -179,7 +177,7 @@ class QAT_ConvBlock(nn.Module):
             if norms[i] == 'batch':
                 norm_layer = nn.BatchNorm2d(channels[i+1])
                 self.layers.append(norm_layer)
-            elif norms[i] == 'layer':
+            elif norms[i] == 'layer': #DEPRECATED
                 norm_layer = nn.LayerNorm([channels[i+1], img_size, img_size])
                 self.layers.append(norm_layer)
             if norms[i] is not None:

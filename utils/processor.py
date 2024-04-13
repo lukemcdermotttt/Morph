@@ -9,9 +9,10 @@ import torch.nn as nn
 import os
 from datetime import datetime
 import time
+from .metrics import get_mean_dist, get_param_count, get_inference_time
 
 #Trains model and calculates all metrics 
-def evaluate_architecture(model, train_loader, valid_loader, device, num_epochs = 50, lr = .0015, weight_decay=2.2e-9):
+def evaluate(model, train_loader, val_loader, device, num_epochs = 50, lr = .0015, weight_decay=2.2e-9):
     model = model.to(device)
 
     #Train Model
@@ -63,6 +64,7 @@ def train(model, optimizer, scheduler, criterion, train_loader, valid_loader, de
         if scheduler:
             scheduler.step()
 
+        # Early Stopping Procedure
         if validation_loss < previous_epoch_loss:
             curr_patience=patience
         else:
@@ -71,35 +73,3 @@ def train(model, optimizer, scheduler, criterion, train_loader, valid_loader, de
         previous_epoch_loss = validation_loss
 
     return previous_epoch_loss
-
-#Metric Functions
-def get_mean_dist(model, dataloader, device, psz=11):
-    distances = []
-    with torch.no_grad():
-        for features, true_locs in dataloader:
-            features = features.to(device)
-            preds = model(features)  # assuming model outputs normalized [px, py]
-            preds = preds.cpu().numpy()
-
-            # Calculate Euclidean distance
-            distance = np.sqrt(np.sum((preds - true_locs.numpy()) ** 2, axis=1)) * 11 # psz=11
-            distances.extend(distance)  # Changed from append to extend
-
-    mean_distance = np.mean(distances)
-    return mean_distance
-
-def get_param_count(model):
-    count = 0
-    count += sum(p.numel() for p in model.Blocks.parameters())
-    count += sum(p.numel() for p in model.MLP.parameters())
-    count += sum(p.numel() for p in model.conv.parameters())
-    return count
-
-def get_inference_time(model,device):
-    x = torch.randn((256,1,11,11)).to(device)
-    start = time.time()
-    for _ in range(100):
-        y = model(x)
-    end = time.time()
-    return end-start
-

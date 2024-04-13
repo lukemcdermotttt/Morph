@@ -97,6 +97,7 @@ if __name__ == "__main__":
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.RMSprop(model.parameters(), lr=.00015, weight_decay=2.2e-9) #chagned lr from .0015
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=300)
+    
     print('Starting run...')
     for prune_iter in range(0,7):
         print('Starting prune iter: ', prune_iter)

@@ -4,10 +4,11 @@ import torch
 import torch.nn as nn
 import optuna
 from models.blocks import *
-from models.train_utils import *
-import time
+from utils.processor import evaluate, train
+from utils.metrics import get_mean_dist, get_param_count, get_inference_time
 from utils.bops import *
-from utils.hyperparam_examples import *
+from examples.hyperparam_examples import OpenHLS_params, BraggNN_params, Example1_params, Example2_params, Example3_params
+import time
 
 """
 Optuna Objective to evaluate a trial
@@ -16,6 +17,7 @@ Optuna Objective to evaluate a trial
 3) Evaluates Mean Distance, bops, param count, inference time, and val loss
 Saves all information in global_search.txt
 """
+
 def objective(trial):
     #Build Model
     num_blocks = 3
@@ -41,7 +43,7 @@ def objective(trial):
             Blocks.append(ConvBlock(channels, kernels, acts, norms, img_size))
 
             #Calculate bops for this block
-            bops += get_conv_bops(Blocks[-1], input_shape = [batch_size, channels[0], img_size, img_size], bit_width=32)
+            bops += get_Conv_bops(Blocks[-1], input_shape = [batch_size, channels[0], img_size, img_size], bit_width=32)
             img_size -= reduce_img_size
             block_channels.append(channels[-1]) #save the final out dimension so next block knows what to expect
 
@@ -51,17 +53,16 @@ def objective(trial):
             Blocks.append(ConvAttn(block_channels[-1], hidden_channels, act))
 
             #Calculate bops for this block
-            bops += get_convattn_bops(Blocks[-1], input_shape = [batch_size, block_channels[-1], img_size, img_size], bit_width=32)
+            bops += get_ConvAttn_bops(Blocks[-1], input_shape = [batch_size, block_channels[-1], img_size, img_size], bit_width=32)
             #Note: ConvAttn does not change the input shape because we use a skip connection
     
-
     #Build MLP
     in_dim = block_channels[-1] * img_size**2 #this assumes spatial dim stays same with padding trick
     widths, acts, norms = sample_MLP(trial, in_dim)
     mlp = MLP(widths, acts, norms)
 
     #Calculate bops for the mlp
-    bops +=  get_mlp_bops(mlp, bit_width=32)
+    bops +=  get_MLP_bops(mlp, bit_width=32)
     
     #Initialize Model
     Blocks = nn.Sequential(*Blocks)
@@ -72,7 +73,7 @@ def objective(trial):
     print(model)
     print('BOPs:', bops)
     print('Trial ', trial.number,' begins evaluation...')
-    mean_distance, inference_time, validation_loss, param_count = evaluate(model, train_loader, valid_loader, device)
+    mean_distance, inference_time, validation_loss, param_count = evaluate(model, train_loader, val_loader, device)
     with open("./global_search.txt", "a") as file:
         file.write(f"Trial {trial.number}, Mean Distance: {mean_distance}, BOPs: {bops}, Inference time: {inference_time}, Validation Loss: {validation_loss}, Param Count: {param_count}, Hyperparams: {trial.params}\n")
     return mean_distance, bops
@@ -85,7 +86,8 @@ if __name__ == "__main__":
     print('Loaded Dataset...')
 
     study = optuna.create_study(sampler=optuna.samplers.NSGAIISampler(population_size = 20), directions=['minimize', 'minimize']) #min mean_distance and inference time
-    #Queue OpenHLS & BraggNN architectures to show the search strategy what to beat.
+    
+    #Queue OpenHLS & BraggNN architectures to show the search strategy what we want to beat.
     study.enqueue_trial(OpenHLS_params)
     study.enqueue_trial(BraggNN_params)
     study.enqueue_trial(Example1_params)

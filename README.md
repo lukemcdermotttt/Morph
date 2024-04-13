@@ -12,7 +12,7 @@ Install dependencies: ``pip install -r requirements.txt``
 Generate the dataset by running ``python data/get_dataset.py``
 
 ### Global Search
-Run ``python global_search.py`` to search across architectures that minimize mean_distance & BOPs, the reports will be at global_search.txt
+Run ``python global_search.py`` to search across architectures that minimize mean_distance & BOPs, the reports will be at global_search.txt. Note: this will run on cuda:0, so make sure to change the device variable in main if this needs to run on another device.
 
 #### Examples of using blocks.py to recreate these architectures in global search
 Check out ``examples/model_examples.py`` to see how we can create architectures from these blocks.
