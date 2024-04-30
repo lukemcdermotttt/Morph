@@ -11,8 +11,8 @@ from datetime import datetime
 import time
 from .metrics import get_mean_dist, get_param_count, get_inference_time
 
-#Trains model and calculates all metrics 
-def evaluate(model, train_loader, val_loader, device, num_epochs = 50, lr = .0015, weight_decay=2.2e-9):
+#Trains BraggNN models and calculates all metrics 
+def evaluate_BraggNN(model, train_loader, val_loader, device, num_epochs = 50, lr = .0015, weight_decay=2.2e-9):
     model = model.to(device)
 
     #Train Model
@@ -24,8 +24,27 @@ def evaluate(model, train_loader, val_loader, device, num_epochs = 50, lr = .001
     #Evaluate Performance
     mean_distance = get_mean_dist(model, val_loader, device)
     #Evaluate Efficiency
-    param_count = get_param_count(model)
-    inference_time = get_inference_time(model, device) #Just for reference, we are not optimizing for this.
+    param_count = get_param_count_BraggNN(model) #Just for reference, we are not optimizing for this. We measure BOPs in global_search.py
+    inference_time = get_inference_time(model, device, img_size=(256,1,11,11)) #Just for reference, we are not optimizing for this.
+
+    print('Mean Distance: ', mean_distance, ', Inference time: ', inference_time, ', Validation Loss: ', validation_loss, ', Param Count: ', param_count)
+    return mean_distance, inference_time, validation_loss, param_count
+
+#Trains model and calculates all metrics 
+def evaluate_Deepsets(model, train_loader, val_loader, device, num_epochs = 50, lr = .0015, weight_decay=2.2e-9):
+    model = model.to(device)
+    
+    #Train Model
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0032)
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3)
+    validation_loss = train(model, optimizer, scheduler, criterion, train_loader, val_loader, device, num_epochs, patience=7)
+    
+    #Evaluate Performance
+    mean_distance = get_mean_dist(model, val_loader, device)
+    #Evaluate Efficiency
+    param_count = get_param_count_Deepsets(model)
+    inference_time = get_inference_time(model, device, img_size=(32000,8,3)) #Just for reference, we are not optimizing for this.
 
     print('Mean Distance: ', mean_distance, ', Inference time: ', inference_time, ', Validation Loss: ', validation_loss, ', Param Count: ', param_count)
     return mean_distance, inference_time, validation_loss, param_count

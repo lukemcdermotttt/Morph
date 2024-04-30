@@ -48,10 +48,10 @@ class DeepSetDataset(Dataset):
         return len(self.data) * len(self.data[0])
 
 def setup_data_loaders(base_file_name, batch_size=32, num_workers=4, pin_memory=False, prefetch_factor=2):
-    train_data_files = [f'../data/normalized_data3/x_train_{base_file_name}.npy']
-    train_target_files = [f'../data/normalized_data3/y_train_{base_file_name}.npy']
-    test_data_files = [f'../data/normalized_data3/x_test_{base_file_name}.npy']
-    test_target_files = [f'../data/normalized_data3/y_test_{base_file_name}.npy']
+    train_data_files = [f'./data/normalized_data3/x_train_{base_file_name}.npy']
+    train_target_files = [f'./data/normalized_data3/y_train_{base_file_name}.npy']
+    test_data_files = [f'./data/normalized_data3/x_test_{base_file_name}.npy']
+    test_target_files = [f'./data/normalized_data3/y_test_{base_file_name}.npy']
 
     ds_train = DeepSetDataset(train_data_files, train_target_files, use='train')
     dl_train = DataLoader(ds_train, batch_size=batch_size, shuffle=True, num_workers=num_workers, prefetch_factor=prefetch_factor, drop_last=True, pin_memory=pin_memory)

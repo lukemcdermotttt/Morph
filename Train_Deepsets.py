@@ -5,11 +5,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import brevitas.nn as qnn
 from brevitas.quant import IntBias
 import numpy as np
-from DeepsetsDataset import setup_data_loaders
+from data.DeepsetsDataset import setup_data_loaders
 
 torch.manual_seed(42)
 np.random.seed(42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class DeepSetsInv(nn.Module):
     def __init__(self, input_size, nnodes_phi: int = 32, nnodes_rho: int = 16, activ: str = "relu"):
@@ -84,9 +84,9 @@ if __name__ == "__main__":
 
     # Set up data loaders
     base_file_name = 'jet_images_c8_minpt2_ptetaphi_robust_fast'
-    batch_size = 32
-    num_workers = 0
-    train_loader, val_loader, test_loader = setup_data_loaders(base_file_name, batch_size, num_workers, prefetch_factor=None, pin_memory=False)
+    batch_size = 9192
+    num_workers = 8
+    train_loader, val_loader, test_loader = setup_data_loaders(base_file_name, batch_size, num_workers, prefetch_factor=True, pin_memory=True)
 
     num_epochs = 100
     model.to(device)

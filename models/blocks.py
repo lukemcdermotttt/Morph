@@ -72,7 +72,7 @@ class MLP(torch.nn.Module):
 
 def sample_ConvAttn(trial, prefix):
     channel_space = (1,2,4,8,16,32)
-    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    act_space = (nn.ReLU(), nn.LeakyReLU(negative_slope=0.01), None)
     hidden_channels = channel_space[trial.suggest_int(prefix + '_hiddenchannel', 0, len(channel_space) - 1)]
     act = act_space[trial.suggest_categorical(prefix + '_act', [k for k in range(len(act_space))])]
     return hidden_channels, act
@@ -82,7 +82,7 @@ def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
     #Search space to sample from
     channel_space = (2,4,8,16,32,64)
     kernel_space = (1,3)
-    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    act_space = (nn.ReLU(), nn.LeakyReLU(negative_slope=0.01), None)
     norm_space = (None, 'batch') #Note: Removed layer norm!
 
     channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
@@ -95,11 +95,11 @@ def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
 
 def sample_MLP(trial, in_dim, prefix = 'MLP', num_layers = 4):
     width_space = (4,8,16,32,64)
-    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    act_space = (nn.ReLU(), nn.LeakyReLU(negative_slope=0.01), None)
     norm_space = (None, 'batch') #Note: Removed layer norm!
 
     widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [2]
-    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [k for k in range(len(act_space))])] for i in range(num_layers)]
+    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), (0,1,2))] for i in range(num_layers)]
     norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
 
     return widths, acts, norms
