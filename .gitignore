@@ -4,3 +4,5 @@
 env/
 .env/
 /saved_models/*
+data/normalized_data3/
+data/normalized_data3-20240423T200227Z-001.zip
