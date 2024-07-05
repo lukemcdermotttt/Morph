@@ -9,24 +9,24 @@ from data.DeepsetsDataset import setup_data_loaders
 
 torch.manual_seed(42)
 np.random.seed(42)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device('cpu') #torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class DeepSetsInv(nn.Module):
-    def __init__(self, input_size, nnodes_phi: int = 32, nnodes_rho: int = 16, activ: str = "relu"):
+    def __init__(self, input_size, nnodes_phi: int = 32, nnodes_rho: int = 16, activ: str = "relu", weight_bit_width=8):
         super(DeepSetsInv, self).__init__()
         self.nclasses = 5
         self.phi = nn.Sequential(
-            qnn.QuantLinear(input_size, nnodes_phi, bias=True, weight_bit_width=8),
+            qnn.QuantLinear(input_size, nnodes_phi, bias=True, weight_bit_width=weight_bit_width),
             self.get_activation(activ),
-            qnn.QuantLinear(nnodes_phi, nnodes_phi, bias=True, weight_bit_width=8),
+            qnn.QuantLinear(nnodes_phi, nnodes_phi, bias=True, weight_bit_width=weight_bit_width),
             self.get_activation(activ),
-            qnn.QuantLinear(nnodes_phi, nnodes_phi, bias=True, weight_bit_width=8),
+            qnn.QuantLinear(nnodes_phi, nnodes_phi, bias=True, weight_bit_width=weight_bit_width),
             self.get_activation(activ),
         )
         self.rho = nn.Sequential(
-            qnn.QuantLinear(nnodes_phi, nnodes_rho, bias=True, weight_bit_width=8),
+            qnn.QuantLinear(nnodes_phi, nnodes_rho, bias=True, weight_bit_width=weight_bit_width),
             self.get_activation(activ),
-            qnn.QuantLinear(nnodes_rho, self.nclasses, bias=True, weight_bit_width=8),
+            qnn.QuantLinear(nnodes_rho, self.nclasses, bias=True, weight_bit_width=weight_bit_width),
         )
 
     def get_activation(self, activ):
@@ -72,19 +72,17 @@ if __name__ == "__main__":
 
     # Create the model
     input_size = 3  # Assuming each input feature vector has a size of 3
-    model = DeepSetsInv(input_size=input_size, nnodes_phi=32, nnodes_rho=16, activ="relu")
+    model = DeepSetsInv(input_size=input_size, nnodes_phi=32, nnodes_rho=16, activ="relu", weight_bit_width=32)
     print(model)
-
-
 
     # Define the loss function and optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0032)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0032) #lr=0.0032)
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3)
 
     # Set up data loaders
     base_file_name = 'jet_images_c8_minpt2_ptetaphi_robust_fast'
-    batch_size = 9192
+    batch_size = 1024
     num_workers = 8
     train_loader, val_loader, test_loader = setup_data_loaders(base_file_name, batch_size, num_workers, prefetch_factor=True, pin_memory=True)
 
@@ -100,7 +98,9 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         lossval = 0.0
         model.train()
+        print(len(train_loader))
         for batch_data, batch_targets in train_loader:
+            
             batch_data = batch_data.to(device).float()
             batch_targets = batch_targets.to(device).float()  # Convert targets to long tensor
             

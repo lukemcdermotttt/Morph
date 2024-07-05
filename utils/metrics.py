@@ -47,3 +47,24 @@ def get_inference_time(model,device,img_size=(256,1,11,11)):
     end = time.time()
     return end-start
 
+def get_acc(model, dataloader, device):
+    model.eval()
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        for data, targets in dataloader:
+            data = data.to(device).float()
+            targets = targets.to(device).float()
+
+            outputs = model(data)
+            _, predicted = torch.max(outputs, 1)
+            true_labels = torch.argmax(targets, 1)  # Get the true class labels
+            
+            total += true_labels.size(0)
+            correct += (predicted == true_labels).sum().item()
+        
+        accuracy = correct / total
+        print(f"Test Accuracy: {accuracy:.4f}")
+    
+    return accuracy
+

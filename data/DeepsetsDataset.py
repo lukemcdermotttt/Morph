@@ -42,7 +42,7 @@ class DeepSetDataset(Dataset):
         item_idx = index % len(self.data[0])
         data = self.data[fold_idx][item_idx]
         target = self.targets[fold_idx][item_idx]
-        return torch.from_numpy(data), torch.from_numpy(target)
+        return torch.from_numpy(data).permute((1,0)), torch.from_numpy(target)
 
     def __len__(self):
         return len(self.data) * len(self.data[0])
