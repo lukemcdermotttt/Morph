@@ -26,18 +26,45 @@ def get_mean_dist(model, dataloader, device, psz=11):
     mean_distance = np.mean(distances)
     return mean_distance
 
-def get_param_count(model):
+def get_param_count_BraggNN(model):
     count = 0
     count += sum(p.numel() for p in model.Blocks.parameters())
     count += sum(p.numel() for p in model.MLP.parameters())
     count += sum(p.numel() for p in model.conv.parameters())
     return count
 
-def get_inference_time(model,device):
-    x = torch.randn((256,1,11,11)).to(device)
+def get_param_count_Deepsets(model):
+    count = 0
+    count += sum(p.numel() for p in model.phi.parameters())
+    count += sum(p.numel() for p in model.rho.parameters())
+    return count
+
+def get_inference_time(model,device,img_size=(256,1,11,11)):
+    x = torch.randn(img_size).to(device)
     start = time.time()
     for _ in range(100):
         y = model(x)
     end = time.time()
     return end-start
+
+def get_acc(model, dataloader, device):
+    model.eval()
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        for data, targets in dataloader:
+            data = data.to(device).float()
+            targets = targets.to(device).float()
+
+            outputs = model(data)
+            _, predicted = torch.max(outputs, 1)
+            true_labels = torch.argmax(targets, 1)  # Get the true class labels
+            
+            total += true_labels.size(0)
+            correct += (predicted == true_labels).sum().item()
+        
+        accuracy = correct / total
+        print(f"Test Accuracy: {accuracy:.4f}")
+    
+    return accuracy
 

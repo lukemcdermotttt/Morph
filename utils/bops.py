@@ -97,4 +97,54 @@ def get_MLP_bops(block, bit_width=32):
             bops += get_linear_bops(layer, bit_width)
     return bops
 
+def get_AvgPool_bops(input_shape, dim=1, bit_width=32):
+    # number of elements in the dimension to be reduced
+    num_elements_in_dim = input_shape[dim]
+
+    # Calculate the number of elements in the output tensor
+    output_elements = 1
+    for i, d in enumerate(input_shape):
+        if i != dim:
+            output_elements *= d
+
+    # bit operations for summing up the elements
+    sum_bit_operations = (num_elements_in_dim - 1) * output_elements * bit_width #similar to how we calculated sum
+
+    div_bit_operations = output_elements*math.log2(output_elements) * bit_width #Similar to how we previosuly calculated division
+
+    # memory access operations for reading the input tensor
+    input_elements = math.prod(input_shape)
+    read_ops = input_elements * math.log2(input_elements)
+
+    #memry access operations for writing the output tensor
+    #write_ops = output_elements * math.log2(output_elements)
+
+    total_bit_operations = sum_bit_operations + div_bit_operations + read_ops
+
+    return total_bit_operations
+
+def get_MaxPool_bops(input_shape, dim=1, bit_width=32):
+
+    # number of elements in the dimension to be reduced
+    num_elements_in_dim = input_shape[dim]
+
+    # Calculate the number of elements in the output tensor
+    output_elements = 1
+    for i, d in enumerate(input_shape):
+        if i != dim:
+            output_elements *= d
+
+    #max of an n-long tensor compares t[0] > t[1], max(t[0],t[1]) > t[2]... so n-1 comparisons. But we have num_elements_in_dim many tensors.
+    num_comparisons = (output_elements - 1) * num_elements_in_dim 
+
+    #worst case time complexity is O(n) becuase you are iterating through all the bits to see which is larger.
+    bops_per_comparison = bit_width 
+
+    input_elements = math.prod(input_shape)
+    read_bops = input_elements * math.log2(input_elements)
+
+    bops = num_comparisons * bops_per_comparison + read_bops
+    return bops 
+
+
 #NOTE: BatchNorm, LayerNorm, etc. are extremely small relative to the Conv2D, linear, and matmul operations. We skip these as they are negligible.

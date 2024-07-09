@@ -9,7 +9,9 @@ Load the virtual environment: ``source .env/bin/activate``
 Install dependencies: ``pip install -r requirements.txt``
 
 ### Set up dataset
-Generate the dataset by running ``python data/get_dataset.py``
+For the dataset used in BraggNN, run ``python data/get_dataset.py`` to generate the set.
+
+For Deepsets dataset, download the normalized_data3.zip file and unzip it into /data/normalized_data3/
 
 ### Global Search
 Run ``python global_search.py`` to search across architectures that minimize mean_distance & BOPs, the reports will be at global_search.txt. Note: this will run on cuda:0, so make sure to change the device variable in main if this needs to run on another device.

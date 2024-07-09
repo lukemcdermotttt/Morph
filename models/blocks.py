@@ -72,34 +72,14 @@ class MLP(torch.nn.Module):
 
 def sample_ConvAttn(trial, prefix):
     channel_space = (1,2,4,8,16,32)
-    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
+    act_space = (nn.ReLU(), nn.LeakyReLU(negative_slope=0.01), None)
     hidden_channels = channel_space[trial.suggest_int(prefix + '_hiddenchannel', 0, len(channel_space) - 1)]
     act = act_space[trial.suggest_categorical(prefix + '_act', [k for k in range(len(act_space))])]
     return hidden_channels, act
 
-#prefix of the name you suggest variables for, a prefix needs to be mapped to a unique block location.
-def sample_ConvBlock(trial, prefix, in_channels, num_layers = 2):
-    #Search space to sample from
-    channel_space = (2,4,8,16,32,64)
-    kernel_space = (1,3)
-    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
-    norm_space = (None, 'batch') #Note: Removed layer norm!
 
-    channels = [in_channels] + [channel_space[ trial.suggest_int(prefix + '_channels_' + str(i), 0, len(channel_space) - 1) ]
-                                    for i in range(num_layers)] #Picks an integer an index of channel_space for easier sampling
-    kernels = [trial.suggest_categorical(prefix + '_kernels_' + str(i), kernel_space) for i in range(num_layers)]
-    norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
-    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [k for k in range(len(act_space))])] for i in range(num_layers)]
-
-    return channels, kernels, acts, norms 
-
-def sample_MLP(trial, in_dim, prefix = 'MLP', num_layers = 4):
-    width_space = (4,8,16,32,64)
-    act_space = (nn.ReLU(), nn.GELU(), nn.LeakyReLU(negative_slope=0.01), None)
-    norm_space = (None, 'batch') #Note: Removed layer norm!
-
-    widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [2]
-    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), [k for k in range(len(act_space))])] for i in range(num_layers)]
+    widths = [in_dim] + [width_space[trial.suggest_int(prefix + '_width_' + str(i), 0, len(width_space) - 1)] for i in range(num_layers-1)] + [out_dim]
+    acts = [act_space[trial.suggest_categorical(prefix + '_acts_' + str(i), (0,1,2))] for i in range(num_layers)]
     norms = [trial.suggest_categorical(prefix + '_norms_' + str(i), norm_space) for i in range(num_layers)]
 
     return widths, acts, norms
@@ -119,15 +99,155 @@ class CandidateArchitecture(torch.nn.Module):
         return x
     
 class DeepSetsArchitecture(torch.nn.Module):
-    def __init__(self, phi, rho):
+    def __init__(self, phi, rho, aggregator):
         super().__init__()
         self.phi = phi
         self.rho = rho
+        self.aggregator = aggregator
 
     def forward(self, x):
         x = self.phi(x)
-        x = torch.mean(x, dim=1)
+        x = self.aggregator(x) #torch.mean(x, dim=1)
+        #x = torch.squeeze(x, dim=1)
         x = self.rho(x)
+        return x
+    
+class SequenceNorm1D(torch.nn.Module):
+    def __init__(self, seq_len): 
+        super().__init__()
+        self.norm = nn.BatchNorm1d(seq_len)
+
+    def forward(self, x):
+        if len(x.size()) == 3:
+            indices = (0,2,1)
+        elif len(x.size()) == 2:
+            indices = (0,1) #dont permute.
+        else:
+            print(f'Input x of size {x.size()} is not supported!')
+
+        x = torch.permute(x, indices)
+        x = self.norm(x)
+        x = torch.permute(x, indices)
+        return x
+
+class Phi(torch.nn.Module):
+    def __init__(self, widths, acts, norms):
+        super().__init__()
+
+        self.layers = []
+        for i in range(len(acts)): 
+            self.layers.append( nn.Linear(widths[i], widths[i+1]) )
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm1d(8) )
+            elif norms[i] == 'sequence':
+                self.layers.append( SequenceNorm1D(widths[i+1]) )
+            if acts[i] != None:
+                self.layers.append( acts[i] )
+        self.layers = nn.Sequential(*self.layers)
+        
+
+    def forward(self, x):
+        return self.layers(x)
+    
+class Rho(torch.nn.Module):
+    def __init__(self, widths, acts, norms):
+        super().__init__()
+
+        self.layers = []
+        for i in range(len(acts)): 
+            self.layers.append( nn.Linear(widths[i], widths[i+1]) )
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm1d(widths[i+1]) )
+            elif norms[i] == 'sequence':
+                self.layers.append( SequenceNorm1D(widths[i+1]) )
+
+            if acts[i] != None:
+                self.layers.append( acts[i] )
+        self.layers = nn.Sequential(*self.layers)
+        
+
+    def forward(self, x):
+        return self.layers(x)
+    
+class ConvPhi(torch.nn.Module):
+    def __init__(self, widths, acts, norms):
+        super().__init__()
+
+        self.layers = []
+        for i in range(len(acts)): 
+            self.layers.append( nn.Conv1d(widths[i], widths[i+1], kernel_size=1,stride=1) )
+            if norms[i] == 'batch':
+                self.layers.append( nn.BatchNorm1d(widths[i+1]) )
+            elif norms[i] == 'sequence':
+                self.layers.append( SequenceNorm1D(widths[i+1]) )
+            if acts[i] != None:
+                self.layers.append( acts[i] )
+        self.layers = nn.Sequential(*self.layers)
+        
+
+    def forward(self, x):
+        return self.layers(x)
+    
+class QAT_Phi(torch.nn.Module):
+    def __init__(self, widths, acts, norms, bit_width=8):
+        super().__init__()
+        self.layers = nn.Sequential()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        for i in range(len(acts)):
+            linear_layer = qnn.QuantLinear(widths[i], widths[i+1], bias=True, weight_bit_width=bit_width)
+            self.layers.add_module(f'linear_{i}', linear_layer)
+            if norms[i] == 'batch':
+                self.layers.add_module(f'norm_{i}', nn.BatchNorm1d(8))
+            if acts[i] is not None:
+                act_layer = acts[i] if isinstance(acts[i], nn.Module) else qnn.QuantReLU(bit_width=bit_width, return_quant_tensor=True)
+                self.layers.add_module(f'act_{i}', act_layer)
+                
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = self.quant_inp(x)
+            x = layer(x)
+        return x
+    
+class QAT_ConvPhi(torch.nn.Module):
+    def __init__(self, widths, acts, norms, bit_width=8):
+        super().__init__()
+        self.layers = nn.Sequential()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        for i in range(len(acts)):
+            linear_layer = qnn.QuantConv1d(widths[i], widths[i+1], kernel_size=1, stride=1, weight_bit_width=bit_width)
+            self.layers.add_module(f'linear_{i}', linear_layer)
+            if norms[i] == 'batch':
+                self.layers.add_module(f'norm_{i}', nn.BatchNorm1d(widths[i+1]))
+            if acts[i] is not None:
+                act_layer = acts[i] if isinstance(acts[i], nn.Module) else qnn.QuantReLU(bit_width=bit_width, return_quant_tensor=True)
+                self.layers.add_module(f'act_{i}', act_layer)
+                
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = self.quant_inp(x)
+            x = layer(x)
+        return x
+    
+class QAT_Rho(torch.nn.Module):
+    def __init__(self, widths, acts, norms, bit_width=8):
+        super().__init__()
+        self.layers = nn.Sequential()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        for i in range(len(acts)):
+            linear_layer = qnn.QuantLinear(widths[i], widths[i+1], bias=True, weight_bit_width=bit_width)
+            self.layers.add_module(f'linear_{i}', linear_layer)
+            if norms[i] == 'batch':
+                self.layers.add_module(f'norm_{i}', nn.BatchNorm1d(widths[i+1]))
+            elif norms[i] == 'layer':
+                self.layers.add_module(f'norm_{i}', nn.LayerNorm(widths[i+1]))
+            if acts[i] is not None:
+                act_layer = acts[i] if isinstance(acts[i], nn.Module) else qnn.QuantReLU(bit_width=bit_width, return_quant_tensor=True)
+                self.layers.add_module(f'act_{i}', act_layer)
+                
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = self.quant_inp(x)
+            x = layer(x)
         return x
 
 class Identity(torch.nn.Module):
@@ -213,6 +333,7 @@ class QAT_MLP(torch.nn.Module):
     def forward(self, x):
         x = self.quant_inp(x)
         for i, layer in enumerate(self.layers):
+            print(i)
             x = self.quant_inp(x)
             x = layer(x)
         return x
