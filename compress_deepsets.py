@@ -109,13 +109,31 @@ def get_parameters_to_prune(model, bias = False):
         
     return tuple(parameters_to_prune)
 
+# def get_sparsities(model):
+#     sparsities = []
+#     for name, module in model.named_modules():
+#         if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+#             layer_sparsity = torch.sum(module.weight_mask == 0).float() / module.weight_mask .numel()
+#             sparsities.append(layer_sparsity)
+#     return tuple(sparsities)
+
 def get_sparsities(model):
-    sparsities = []
+    sparsities = {'phi': [], 'rho': []}
+    current_component = None
+
     for name, module in model.named_modules():
-        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
-            layer_sparsity = torch.sum(module.weight_mask == 0).float() / module.weight_mask .numel()
-            sparsities.append(layer_sparsity)
-    return tuple(sparsities)
+        if 'phi' in name:
+            current_component = 'phi'
+        elif 'rho' in name:
+            current_component = 'rho'
+        
+        if isinstance(module, torch.nn.Linear):
+            if hasattr(module, 'weight_mask'):
+                layer_sparsity = torch.sum(module.weight_mask == 0).float() / module.weight_mask.numel()
+                if current_component:
+                    sparsities[current_component].append(layer_sparsity)
+    
+    return (tuple(sparsities['phi']), tuple(sparsities['rho']))
 
 if __name__ == "__main__":
     # #TODO: Change to fit anyones device
@@ -123,21 +141,35 @@ if __name__ == "__main__":
         device = torch.device('cuda:0')
     else:
         device = torch.device('cpu')
+    print('Device:', device)
     batch_size = 4096
     num_workers = 8
 
     train_loader, val_loader, test_loader = DeepsetsDataset.setup_data_loaders('jet_images_c8_minpt2_ptetaphi_robust_fast', batch_size, num_workers, prefetch_factor=True, pin_memory=True)
     print('Loaded Dataset...')
 
-    for model, model_name in [(large_model, 'Large'), (medium_model, 'Medium'), (small_model, 'Small'), (tiny_model, 'Tiny')]:
-        prune.global_unstructured(get_parameters_to_prune(model), pruning_method=prune.L1Unstructured,amount=0)
-        for prune_iter in range(0,20):
+    # for model, model_name in [(large_model, 'Large'), (medium_model, 'Medium'), (small_model, 'Small'), (tiny_model, 'Tiny')]:
+    #     prune.global_unstructured(get_parameters_to_prune(model), pruning_method=prune.L1Unstructured,amount=0)
+    #     for prune_iter in range(0,20):
 
-            val_accuracy, inference_time, validation_loss, param_count = evaluate_Deepsets(model, train_loader, val_loader, device, num_epochs = 100)
+    #         val_accuracy, inference_time, validation_loss, param_count = evaluate_Deepsets(model, train_loader, val_loader, device, num_epochs = 100)
+    #         test_accuracy = get_acc(model, test_loader, device)
+            
+    #         sparsities = get_sparsities(model)
+    #         with open("./NAC_Compress.txt", "a") as file:
+    #             file.write(f"Deepsets {model_name} Model {bit_width}-Bit QAT Model Prune Iter: {prune_iter}, Test Accuracy: {test_accuracy}, Val Accuracy: {val_accuracy}, Val Loss: {validation_loss}, Sparsities: {sparsities}\n")
+            
+    #         prune.global_unstructured(get_parameters_to_prune(model), pruning_method=prune.L1Unstructured,amount=.2)
+    for model, model_name in [(large_model, 'Large'), (medium_model, 'Medium'), (small_model, 'Small'), (tiny_model, 'Tiny')]:
+        prune.global_unstructured(get_parameters_to_prune(model), pruning_method=prune.L1Unstructured, amount=0)
+        for prune_iter in range(0, 20):
+            val_accuracy, inference_time, validation_loss, param_count = evaluate_Deepsets(model, train_loader, val_loader, device, num_epochs=100)
             test_accuracy = get_acc(model, test_loader, device)
             
-            sparsities = get_sparsities(model)
+            phi_sparsities, rho_sparsities = get_sparsities(model)
             with open("./NAC_Compress.txt", "a") as file:
-                file.write(f"Deepsets {model_name} Model {bit_width}-Bit QAT Model Prune Iter: {prune_iter}, Test Accuracy: {test_accuracy}, Val Accuracy: {val_accuracy}, Val Loss: {validation_loss}, Sparsities: {sparsities}\n")
+                file.write(f"Deepsets {model_name} Model {bit_width}-Bit QAT Model Prune Iter: {prune_iter}, "
+                           f"Test Accuracy: {test_accuracy}, Val Accuracy: {val_accuracy}, Val Loss: {validation_loss}, "
+                           f"Phi Sparsities: {phi_sparsities}, Rho Sparsities: {rho_sparsities}\n")
             
-            prune.global_unstructured(get_parameters_to_prune(model), pruning_method=prune.L1Unstructured,amount=.2)
+            prune.global_unstructured(get_parameters_to_prune(model), pruning_method=prune.L1Unstructured, amount=.2)
