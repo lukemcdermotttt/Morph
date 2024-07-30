@@ -126,9 +126,13 @@ def get_sparsities(model):
         for component, part in [('phi', model.phi), ('rho', model.rho)]:
             for name, module in part.named_modules():
                 if isinstance(module, (qnn.QuantLinear, qnn.QuantConv1d, qnn.QuantConv2d)):
-                    if hasattr(module.weight, 'mask'):
-                        layer_sparsity = torch.sum(module.weight.mask == 0).float() / module.weight.mask.numel()
+                    if hasattr(module, 'weight'):
+                        if hasattr(module.weight, 'mask'):
+                            layer_sparsity = torch.sum(module.weight.mask == 0).float() / module.weight.mask.numel()
+                        else:
+                            layer_sparsity = torch.sum(module.weight == 0).float() / module.weight.numel()
                         sparsities[component].append(layer_sparsity)
+                        print(f"{component} - {name}: Sparsity = {layer_sparsity}")
     
     return (tuple(sparsities['phi']), tuple(sparsities['rho']))
 
@@ -154,21 +158,29 @@ if __name__ == "__main__":
     print('Loaded Dataset...')
 
     for model, model_name in [(large_model, 'Large'), (medium_model, 'Medium'), (small_model, 'Small'), (tiny_model, 'Tiny')]:
-        
+        print(f"\nProcessing {model_name} model")
+
         parameters_to_prune = get_parameters_to_prune(model)
         prune.global_unstructured(parameters_to_prune, pruning_method=prune.L1Unstructured, amount=0)
-        
+
         for prune_iter in range(0, 20):
+            print(f"\nPrune iteration: {prune_iter}")
+
+            # Evaluate the model (your existing code)
             val_accuracy, inference_time, validation_loss, param_count = evaluate_Deepsets(model, train_loader, val_loader, device, num_epochs=100)
             test_accuracy = get_acc(model, test_loader, device)
-            
+
+            # Get sparsities for phi and rho separately
             phi_sparsities, rho_sparsities = get_sparsities(model)
-            
-            with open("./NAC_Compress.txt", "a") as file:
+
+            # Log the results
+            with open("./deepsets_Compress2.txt", "a") as file:
                 file.write(f"Deepsets {model_name} Model {bit_width}-Bit QAT Model Prune Iter: {prune_iter}, "
-                        f"Test Accuracy: {test_accuracy}, Val Accuracy: {val_accuracy}, Val Loss: {validation_loss}, "
-                        f"Phi Sparsities: {phi_sparsities}, Rho Sparsities: {rho_sparsities}\n")
-            
+                           f"Test Accuracy: {test_accuracy}, Val Accuracy: {val_accuracy}, Val Loss: {validation_loss}, "
+                           f"Phi Sparsities: {phi_sparsities}, Rho Sparsities: {rho_sparsities}\n")
+
+            # Apply pruning for the next iteration
             if prune_iter < 19:  # Don't prune on the last iteration
                 parameters_to_prune = get_parameters_to_prune(model)
                 prune.global_unstructured(parameters_to_prune, pruning_method=prune.L1Unstructured, amount=0.2)
+                print(f"Applied pruning with amount 0.2")
